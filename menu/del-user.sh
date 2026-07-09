@@ -1,22 +1,18 @@
 #!/bin/bash
 # VPN-Starter-Kit :: menu/del-user.sh
 # Delete a user — either an Xray client (jq) or an SSH/SlowDNS account (userdel).
+# Usage: del-user.sh [ssh|vless|vmess]   (omit the arg to be prompted for a type)
 set -uo pipefail
 
 CONFIG="/usr/local/etc/xray/config.json"
 BASE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TYPE_ARG="${1:-}"
 
 if [[ $EUID -ne 0 ]]; then
   echo "Run as root."; exit 1
 fi
 
 source "$BASE/lib-ssh-users.sh"
-
-echo "What type of user do you want to delete?"
-echo "  [1] Xray VLESS"
-echo "  [2] Xray VMess"
-echo "  [3] SSH / SlowDNS"
-read -rp "Choose: " TYPE
 
 delete_xray() {
   local proto="$1"
@@ -78,9 +74,22 @@ delete_ssh() {
   echo "Deleted SSH/SlowDNS user '$NAME'."
 }
 
-case "$TYPE" in
-  1) delete_xray vless ;;
-  2) delete_xray vmess ;;
-  3) delete_ssh ;;
-  *) echo "Invalid choice." ;;
+case "$TYPE_ARG" in
+  vless) delete_xray vless ;;
+  vmess) delete_xray vmess ;;
+  ssh)   delete_ssh ;;
+  "")
+    echo "What type of user do you want to delete?"
+    echo "  [1] Xray VLESS"
+    echo "  [2] Xray VMess"
+    echo "  [3] SSH / SlowDNS"
+    read -rp "Choose: " TYPE
+    case "$TYPE" in
+      1) delete_xray vless ;;
+      2) delete_xray vmess ;;
+      3) delete_ssh ;;
+      *) echo "Invalid choice." ;;
+    esac
+    ;;
+  *) echo "Usage: del-user.sh [ssh|vless|vmess]"; exit 1 ;;
 esac

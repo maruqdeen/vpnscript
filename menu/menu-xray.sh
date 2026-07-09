@@ -35,8 +35,8 @@ while true; do
 
   case "$opt" in
     1|01) bash "$BASE/add-user.sh" "$PROTO" ; pause ;;
-    3|03) bash "$BASE/renew-user.sh" ; pause ;;
-    4|04) bash "$BASE/del-user.sh" ; pause ;;
+    3|03) bash "$BASE/renew-user.sh" "$PROTO" ; pause ;;
+    4|04) bash "$BASE/del-user.sh" "$PROTO" ; pause ;;
 
     2|02) echo "Trial account — not built yet."; pause ;;
     5|05) echo "Check user login — not built yet."; pause ;;

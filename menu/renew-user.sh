@@ -1,22 +1,18 @@
 #!/bin/bash
 # VPN-Starter-Kit :: menu/renew-user.sh
 # Extend a user's expiry — Xray (rewrite _date tag) or SSH/SlowDNS (chage -e).
+# Usage: renew-user.sh [ssh|vless|vmess]   (omit the arg to be prompted for a type)
 set -uo pipefail
 
 CONFIG="/usr/local/etc/xray/config.json"
 BASE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TYPE_ARG="${1:-}"
 
 if [[ $EUID -ne 0 ]]; then
   echo "Run as root."; exit 1
 fi
 
 source "$BASE/lib-ssh-users.sh"
-
-echo "What type of user do you want to renew?"
-echo "  [1] Xray VLESS"
-echo "  [2] Xray VMess"
-echo "  [3] SSH / SlowDNS"
-read -rp "Choose: " TYPE
 
 renew_xray() {
   local proto="$1"
@@ -82,9 +78,22 @@ renew_ssh() {
   echo "Renewed SSH/SlowDNS user '$NAME' -> expires $new_exp."
 }
 
-case "$TYPE" in
-  1) renew_xray vless ;;
-  2) renew_xray vmess ;;
-  3) renew_ssh ;;
-  *) echo "Invalid choice." ;;
+case "$TYPE_ARG" in
+  vless) renew_xray vless ;;
+  vmess) renew_xray vmess ;;
+  ssh)   renew_ssh ;;
+  "")
+    echo "What type of user do you want to renew?"
+    echo "  [1] Xray VLESS"
+    echo "  [2] Xray VMess"
+    echo "  [3] SSH / SlowDNS"
+    read -rp "Choose: " TYPE
+    case "$TYPE" in
+      1) renew_xray vless ;;
+      2) renew_xray vmess ;;
+      3) renew_ssh ;;
+      *) echo "Invalid choice." ;;
+    esac
+    ;;
+  *) echo "Usage: renew-user.sh [ssh|vless|vmess]"; exit 1 ;;
 esac
