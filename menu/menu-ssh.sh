@@ -10,25 +10,25 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 # colors
-BL=$'\e[38;5;111m'; Y=$'\e[33m'; G=$'\e[32m'; D=$'\e[2m'; X=$'\e[0m'
+BL=$'\e[38;5;111m'; Y=$'\e[33m'; X=$'\e[0m'
 
 pause() { read -rp $'\nPress Enter to continue...' _; }
-todo()  { echo "This feature isn't built yet."; }
 
 while true; do
   clear
   echo ""
-  printf "  ${BL}[01]${X} Create SSH WS\n"
-  printf "  ${BL}[02]${X} Trial SSH WS\n"
-  printf "  ${BL}[03]${X} Renew SSH WS\n"
-  printf "  ${BL}[04]${X} Delete SSH WS\n"
-  printf "  ${BL}[05]${X} Check User Login SSH WS\n"
-  printf "  ${BL}[06]${X} List Member SSH WS\n"
-  printf "  ${BL}[07]${X} Delete User Expired SSH WS\n"
-  printf "  ${BL}[08]${X} Set up Autokill SSH WS\n"
-  printf "  ${BL}[09]${X} Cek Users Multi Login SSH WS\n"
+  printf '%s\n' "===================================================="
+  printf "%17s\n" "SSH & DNS MANAGER"
+  printf '%s\n' "===================================================="
   echo ""
-  printf "  ${BL}└"; printf '─%.0s' {1..48}; printf "┘${X}\n"
+  printf "  ${BL}[01]${X} Create User Acc\n"
+  printf "  ${BL}[02]${X} Create Trial Acc\n"
+  printf "  ${BL}[03]${X} Renew User Acc\n"
+  printf "  ${BL}[04]${X} Delete User Acc\n"
+  printf "  ${BL}[05]${X} Check Active Users\n"
+  printf "  ${BL}[06]${X} List created User Acc\n"
+  printf "  ${BL}[07]${X} Set up Autokill Multi Login\n"
+  printf "  ${BL}[08]${X} Check Users Who Multi Login\n"
   echo ""
   printf "  ${Y}[00]${X} Main Menu\n"
   echo ""
@@ -41,13 +41,10 @@ while true; do
     4|04) bash "$BASE/del-user.sh" ssh ; pause ;;
     5|05) bash "$BASE/check-login.sh" ; pause ;;
     6|06) bash "$BASE/list-users.sh" ; pause ;;
-    8|08) bash "$BASE/autokill-setup.sh" ; pause ;;
-    9|09) bash "$BASE/multilogin-check.sh" ; pause ;;
-
-    7|07) echo "Delete expired — not built yet."; pause ;;
+    7|07) bash "$BASE/autokill-setup.sh" ; pause ;;
+    8|08) bash "$BASE/multilogin-check.sh" ; pause ;;
 
     0|00) exit 0 ;;
     *) echo "Invalid option."; sleep 1 ;;
   esac
 done
-
