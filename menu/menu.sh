@@ -1,0 +1,101 @@
+#!/bin/bash
+# VPN-Starter-Kit :: menu/menu.sh
+# Main interactive dashboard. Installed path: /etc/vpn-script/menu/menu.sh
+# Reached globally by the `menu` command.
+set -uo pipefail
+
+BASE="/etc/vpn-script/menu"
+INSTALL_DIR="/etc/vpn-script"
+
+if [[ $EUID -ne 0 ]]; then
+  echo "Please run as root:  sudo menu"
+  exit 1
+fi
+
+# ---- colors ----
+G=$'\e[32m'; R=$'\e[31m'; Y=$'\e[33m'; C=$'\e[36m'; B=$'\e[1m'; D=$'\e[2m'; X=$'\e[0m'
+
+pause() { read -rp $'\nPress Enter to return to menu...' _; }
+
+# ---- helpers for the header ----
+svc() {
+  # svc <unit> <label>  -> prints "Label: Active|Inactive" colored
+  local unit="$1" label="$2"
+  if systemctl is-active --quiet "$unit" 2>/dev/null; then
+    printf "%s: %sActive%s" "$label" "$G" "$X"
+  else
+    printf "%s: %sInactive%s" "$label" "$R" "$X"
+  fi
+}
+
+line() { printf '%s\n' "=============== $1 ==============="; }
+
+draw_header() {
+  clear
+
+  # --- SERVER INFO ---
+  local uptime_str ip os ram_used ram_total cpu domain nsdomain
+  uptime_str="$(uptime -p 2>/dev/null | sed 's/^up //')"
+  [[ -z "$uptime_str" ]] && uptime_str="n/a"
+  ip="$(curl -s --max-time 3 https://api.ipify.org || hostname -I | awk '{print $1}')"
+  os="$( . /etc/os-release 2>/dev/null; echo "${PRETTY_NAME:-Unknown}" ) ( $(uname -m) )"
+  ram_total="$(free -m | awk '/^Mem:/{print $2}')"
+  ram_used="$(free -m | awk '/^Mem:/{print $3}')"
+  cpu="$(top -bn1 | awk '/Cpu\(s\)/{printf "%.0f", $2+$4}')"
+  domain="$(cat "$INSTALL_DIR/domain" 2>/dev/null)";      [[ -z "$domain" ]]   && domain="(not set)"
+  nsdomain="$(cat "$INSTALL_DIR/ns-domain" 2>/dev/null)"; [[ -z "$nsdomain" ]] && nsdomain="(not set)"
+
+  line "SERVER INFO"
+  echo ""
+  printf "Server Uptime      = %s\n" "$uptime_str"
+  printf "Server IP          = %s%s%s\n" "$C" "$ip" "$X"
+  printf "Operating System   = %s\n" "$os"
+  printf "Cloudflare Domain  = %s%s%s\n" "$C" "$domain" "$X"
+  printf "NS Domain          = %s%s%s\n" "$C" "$nsdomain" "$X"
+  printf "Ram Usage          = %s MB / %s MB\n" "$ram_used" "$ram_total"
+  printf "CPU Usage          = %s %%\n" "$cpu"
+  printf "Time Reboot VPS    = %sNot set%s\n" "$D" "$X"
+
+  # --- ACTIVE SERVICE ---
+  echo ""
+  line "ACTIVE SERVICE"
+  echo ""
+  printf "  %s | %s | %s\n" "$(svc ssh SSH)" "$(svc nginx Nginx)" "$(svc dropbear Dropbear)"
+  printf "  %s | %s | %s\n" "$(svc slowdns Slowdns)" "$(svc xray Xray)" "$(svc ws-proxy SSH-WS)"
+
+  # --- CONTROL MANAGER ---
+  echo ""
+  line "CONTROL MANAGER"
+  echo ""
+}
+
+while true; do
+  draw_header
+
+  # two-column menu
+  printf "  ${B}[1]${X} SSH / DNS Menu       ${B}[6]${X}  Settings\n"
+  printf "  ${B}[2]${X} VMess Menu           ${B}[7]${X}  Running Service\n"
+  printf "  ${B}[3]${X} VLESS Menu           ${B}[8]${X}  Bot & Api Setup\n"
+  printf "  ${B}[4]${X} Trojan Menu          ${B}[9]${X}  Security Mgt\n"
+  printf "  ${B}[5]${X} SS Menu              ${B}[10]${X} WebMin\n"
+  echo ""
+  printf "  ${B}[0]${X} Exit\n"
+  echo ""
+  printf '%s\n' "==================================================="
+  read -rp " Choose an option: " opt
+
+  case "$opt" in
+    1)  bash "$BASE/menu-ssh.sh" ;;
+    2)  bash "$BASE/menu-xray.sh" vmess ;;
+    3)  bash "$BASE/menu-xray.sh" vless ;;
+    4)  echo "Trojan — not built yet (needs Xray inbound + nginx path)."; pause ;;
+    5)  echo "Shadowsocks — not built yet (needs Xray inbound)."; pause ;;
+    6)  bash "$BASE/menu-settings.sh" ;;
+    7)  systemctl --no-pager --type=service | grep -E 'xray|nginx|dropbear|ws-proxy|slowdns' ; pause ;;
+    8)  echo "Bot & Api Setup — not built yet." ; pause ;;
+    9)  echo "Security Mgt — not built yet." ; pause ;;
+    10) echo "WebMin — not built yet." ; pause ;;
+    0)  clear; exit 0 ;;
+    *)  echo "Invalid option."; sleep 1 ;;
+  esac
+done

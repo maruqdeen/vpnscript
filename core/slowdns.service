@@ -1,0 +1,18 @@
+[Unit]
+Description=SlowDNS (DNSTT) Server (VPN-Starter-Kit)
+After=network.target
+
+[Service]
+Type=simple
+# NOTE: replace <YOUR_NS_DOMAIN> during install with the delegated subdomain.
+ExecStart=/etc/vpn-script/slowdns/dnstt-server \
+  -udp :5300 \
+  -privkey-file /etc/vpn-script/slowdns/server.key \
+  <YOUR_NS_DOMAIN> \
+  127.0.0.1:143
+Restart=always
+RestartSec=3
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

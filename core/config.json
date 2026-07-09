@@ -1,0 +1,39 @@
+{
+  "log": {
+    "loglevel": "warning",
+    "access": "/var/log/vpn-script/xray-access.log",
+    "error": "/var/log/vpn-script/xray-error.log"
+  },
+  "inbounds": [
+    {
+      "tag": "vless-ws",
+      "port": 10001,
+      "listen": "127.0.0.1",
+      "protocol": "vless",
+      "settings": {
+        "clients": [],
+        "decryption": "none"
+      },
+      "streamSettings": {
+        "network": "ws",
+        "wsSettings": { "path": "/vless" }
+      }
+    },
+    {
+      "tag": "vmess-ws",
+      "port": 10002,
+      "listen": "127.0.0.1",
+      "protocol": "vmess",
+      "settings": {
+        "clients": []
+      },
+      "streamSettings": {
+        "network": "ws",
+        "wsSettings": { "path": "/vmess" }
+      }
+    }
+  ],
+  "outbounds": [
+    { "protocol": "freedom", "settings": {} }
+  ]
+}
