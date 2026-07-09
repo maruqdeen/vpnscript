@@ -53,6 +53,12 @@ draw_header() {
   cpu="$(top -bn1 | awk '/Cpu\(s\)/{printf "%.0f", $2+$4}')"
   domain="$(cat "$INSTALL_DIR/domain" 2>/dev/null)";      [[ -z "$domain" ]]   && domain="(not set)"
   nsdomain="$(cat "$INSTALL_DIR/ns-domain" 2>/dev/null)"; [[ -z "$nsdomain" ]] && nsdomain="(not set)"
+  local reboot_status
+  if [[ -f "$INSTALL_DIR/autoreboot.enabled" ]]; then
+    reboot_status="Daily $(cat "$INSTALL_DIR/autoreboot.time" 2>/dev/null || echo '?')"
+  else
+    reboot_status="Not set"
+  fi
 
   line "SERVER INFO"
   echo ""
@@ -63,7 +69,7 @@ draw_header() {
   printf "NS Domain          = %s%s%s\n" "$C" "$nsdomain" "$X"
   printf "Ram Usage          = %s MB / %s MB\n" "$ram_used" "$ram_total"
   printf "CPU Usage          = %s %%\n" "$cpu"
-  printf "Time Reboot VPS    = %sNot set%s\n" "$D" "$X"
+  printf "Time Reboot VPS    = %s%s%s\n" "$D" "$reboot_status" "$X"
 
   # --- ACTIVE SERVICE ---
   echo ""

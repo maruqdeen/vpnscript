@@ -54,8 +54,9 @@ echo ">>> [2/9] Directories + copy project files"
 # ============================================================
 mkdir -p "$INSTALL_DIR"/{core,menu,slowdns} /var/log/vpn-script
 cp "$REPO/core/"*.py    "$INSTALL_DIR/core/" 2>/dev/null || true
+cp "$REPO/core/"*.sh    "$INSTALL_DIR/core/" 2>/dev/null || true
 cp "$REPO/menu/"*.sh    "$INSTALL_DIR/menu/"
-chmod +x "$INSTALL_DIR/menu/"*.sh "$INSTALL_DIR/core/"*.py 2>/dev/null || true
+chmod +x "$INSTALL_DIR/menu/"*.sh "$INSTALL_DIR/core/"*.py "$INSTALL_DIR/core/"*.sh 2>/dev/null || true
 
 # --- sanity check: critical files must exist AND be non-empty ---
 # ([[ ! -s ]] catches both "missing" and "0 bytes" — the failure that
