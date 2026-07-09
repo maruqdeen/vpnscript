@@ -6,11 +6,14 @@ set -uo pipefail
 
 BASE="/etc/vpn-script/menu"
 INSTALL_DIR="/etc/vpn-script"
+XRAY_CONFIG="/usr/local/etc/xray/config.json"
 
 if [[ $EUID -ne 0 ]]; then
   echo "Please run as root:  sudo menu"
   exit 1
 fi
+
+source "$BASE/lib-ssh-users.sh"
 
 # ---- colors ----
 G=$'\e[32m'; R=$'\e[31m'; Y=$'\e[33m'; C=$'\e[36m'; B=$'\e[1m'; D=$'\e[2m'; X=$'\e[0m'
@@ -29,6 +32,12 @@ svc() {
 }
 
 line() { printf '%s\n' "=============== $1 ==============="; }
+
+# count_xray <protocol> -> number of clients configured for that inbound (0 if absent)
+count_xray() {
+  jq -r --arg p "$1" '[.inbounds[]? | select(.protocol==$p) | .settings.clients[]?] | length' \
+    "$XRAY_CONFIG" 2>/dev/null || echo 0
+}
 
 draw_header() {
   clear
@@ -62,6 +71,20 @@ draw_header() {
   echo ""
   printf "  %s | %s | %s\n" "$(svc ssh SSH)" "$(svc nginx Nginx)" "$(svc dropbear Dropbear)"
   printf "  %s | %s | %s\n" "$(svc slowdns Slowdns)" "$(svc xray Xray)" "$(svc ws-proxy SSH-WS)"
+
+  # --- ACTIVE ACCOUNT ---
+  local ssh_count vmess_count vless_count trojan_count ss_count
+  ssh_count="$(ssh_user_list | grep -c .)"
+  vmess_count="$(count_xray vmess)"
+  vless_count="$(count_xray vless)"
+  trojan_count="$(count_xray trojan)"
+  ss_count="$(count_xray shadowsocks)"
+
+  echo ""
+  line "ACTIVE ACCOUNT"
+  echo ""
+  printf "  SSH : %s | Vmess: %s | Vless: %s | Trojan: %s | ss: %s\n" \
+    "$ssh_count" "$vmess_count" "$vless_count" "$trojan_count" "$ss_count"
 
   # --- CONTROL MANAGER ---
   echo ""

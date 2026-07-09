@@ -1,7 +1,7 @@
 #!/bin/bash
 # VPN-Starter-Kit :: install/setup.sh  (full orchestrator, hardened)
 # Run standalone:
-#   wget -q https://raw.githubusercontent.com/Jibrinumar/vpnscript/main/install/setup.sh && chmod +x setup.sh && sudo bash setup.sh
+#   wget -q https://raw.githubusercontent.com/maruqdeen/vpnscript/main/install/setup.sh && chmod +x setup.sh && sudo bash setup.sh
 # Or from a clone:
 #   sudo bash install/setup.sh
 set -euo pipefail
@@ -10,7 +10,7 @@ set -euo pipefail
 # SELF-BOOTSTRAP — if run standalone (no repo next to us),
 # pull the whole repo tarball and re-exec from inside it.
 # ============================================================
-REPO_SLUG="Jibrinumar/vpnscript"
+REPO_SLUG="maruqdeen/vpnscript"
 REPO_BRANCH="main"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -185,23 +185,9 @@ echo ">>> [9/9] Global 'menu' command"
 ln -sf "$INSTALL_DIR/menu/menu.sh" /usr/local/bin/menu
 chmod +x /usr/local/bin/menu
 
-SERVER_IP=$(curl -s https://api.ipify.org || echo "your-server-ip")
-WS_HOST="$(cat "$INSTALL_DIR/domain" 2>/dev/null)"
-[[ -z "$WS_HOST" ]] && WS_HOST="$SERVER_IP"
-
 echo ""
 echo "==================================================="
 echo " INSTALL COMPLETE"
 echo "==================================================="
-echo "  Server IP   : $SERVER_IP"
-echo "  WS host     : $WS_HOST"
-echo "  Xray VLESS  : path /vless   (ports 80, 8080, 443/tls)"
-echo "  Xray VMess  : path /vmess   (ports 80, 8080, 443/tls)"
-echo "  SSH-WS      : ports 80, 8080, 8880  + 443/tls"
-echo "  SlowDNS NS  : ${NS_DOMAIN}"
-echo ""
-echo "  SlowDNS public key:"
-cat "$INSTALL_DIR/slowdns/server.pub" 2>/dev/null || echo "  (run slowdns.sh)"
-echo ""
 echo "  Type  menu  to manage users."
 echo "==================================================="
