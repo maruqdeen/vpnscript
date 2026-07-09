@@ -14,11 +14,18 @@ BL=$'\e[38;5;111m'; Y=$'\e[33m'; X=$'\e[0m'
 
 pause() { read -rp $'\nPress Enter to continue...' _; }
 
+center() {
+  local text="$1" width=52 pad
+  pad=$(( (width - ${#text}) / 2 ))
+  (( pad < 0 )) && pad=0
+  printf "%${pad}s%s\n" "" "$text"
+}
+
 while true; do
   clear
   echo ""
   printf '%s\n' "===================================================="
-  printf "%17s\n" "SSH & DNS MANAGER"
+  center "SSH & DNS MANAGER"
   printf '%s\n' "===================================================="
   echo ""
   printf "  ${BL}[01]${X} Create User Acc\n"
