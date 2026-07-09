@@ -111,8 +111,8 @@ while true; do
     1)  bash "$BASE/menu-ssh.sh" ;;
     2)  bash "$BASE/menu-xray.sh" vmess ;;
     3)  bash "$BASE/menu-xray.sh" vless ;;
-    4)  echo "Trojan — not built yet (needs Xray inbound + nginx path)."; pause ;;
-    5)  echo "Shadowsocks — not built yet (needs Xray inbound)."; pause ;;
+    4)  bash "$BASE/menu-xray.sh" trojan ;;
+    5)  bash "$BASE/menu-xray.sh" shadowsocks ;;
     6)  bash "$BASE/menu-settings.sh" ;;
     7)  systemctl --no-pager --type=service | grep -E 'xray|nginx|dropbear|ws-proxy|slowdns' ; pause ;;
     8)  echo "Bot & Api Setup — not built yet." ; pause ;;
