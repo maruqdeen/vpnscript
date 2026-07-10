@@ -38,21 +38,29 @@ ssh_user_status() {
   printf "%sUNLOCKED%s" "$G" "$X"
 }
 
-# Number of DISTINCT devices currently logged in as $1 (Dropbear writes utmp
-# entries, so `who` sees tunnel sessions). Counts unique remote IPs rather
-# than raw session lines, since one device commonly opens several parallel
-# WS sockets — that must not look like multilogin. Falls back to raw line
-# count if no remote-host info is present in utmp.
+# Number of concurrent open tunnel connections for $1.
+#
+# NOT `who`/utmp: Dropbear may not be built with utmp support at all (this
+# was the bug — it silently always read 0), and even when it is, every
+# connection into Dropbear arrives from 127.0.0.1 (ws.py, or now
+# HAProxy/SSLH all proxy to it over loopback), so utmp's "remote host"
+# field is useless for telling devices apart here regardless.
+#
+# Instead: count live Dropbear/OpenSSH processes owned by that user's UID.
+# Whichever daemon authenticates a connection drops privileges to the
+# authenticated user for the life of the session — an OS-level fact, not
+# an optional logging feature — and this is true no matter which of the
+# entry paths (ws.py, HAProxy, SSLH) the connection came in through.
+#
+# This counts raw connections, not distinct devices — one client app
+# commonly opens several parallel sockets, which is exactly why the
+# autokill multilogin limit defaults to 2, not 1.
 ssh_user_login_count() {
-  local user="$1" rows ips
-  rows="$(who 2>/dev/null | awk -v u="$user" '$1==u')"
-  [[ -z "$rows" ]] && { echo 0; return; }
-  ips="$(grep -oE '\([^)]+\)' <<< "$rows" | sort -u | wc -l | tr -d ' ')"
-  if [[ "$ips" -gt 0 ]]; then
-    echo "$ips"
-  else
-    wc -l <<< "$rows" | tr -d ' '
-  fi
+  local user="$1" engine proc n
+  engine="$(cat /etc/vpn-script/ssh-engine 2>/dev/null || echo both)"
+  [[ "$engine" == "openssh" ]] && proc="sshd" || proc="dropbear"
+  n="$(pgrep -c -u "$user" "$proc" 2>/dev/null)"
+  echo "${n:-0}"
 }
 
 # Render the "MEMBER SSH" table (title + rows + account count).
