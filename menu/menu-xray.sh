@@ -68,8 +68,11 @@ while true; do
       pause ;;
 
     2|02)
-      if [[ "$PROTO" == "vmess" ]]; then bash "$BASE/trial-vmess-user.sh"
-      else echo "Trial account — not built yet."; fi
+      case "$PROTO" in
+        vmess) bash "$BASE/trial-vmess-user.sh" ;;
+        vless) bash "$BASE/trial-vless-user.sh" ;;
+        *) echo "Trial account — not built yet." ;;
+      esac
       pause ;;
     5|05) echo "Check active user — not built yet."; pause ;;
 

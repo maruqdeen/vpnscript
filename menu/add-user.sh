@@ -26,6 +26,23 @@ vmess_link() {
   printf 'vmess://%s' "$(printf '%s' "$json" | base64 | tr -d '\n')"
 }
 
+# vless:// share link — a query-string URI, not base64 JSON like vmess.
+# net=ws: host+path set (host = domain, same host/sni fix as vmess).
+# net=grpc: serviceName set instead of host/path. sni added whenever TLS
+# is used. "flow"/"fp" (XTLS/REALITY fingerprinting) deliberately omitted
+# — those only apply over raw TCP, not the WS/gRPC transports we run.
+vless_link() {
+  local ps="$1" add="$2" port="$3" id="$4" net="$5" path="$6" security="$7" q
+  q="encryption=none&security=${security}&type=${net}"
+  if [[ "$net" == "grpc" ]]; then
+    q="${q}&serviceName=${path}"
+  else
+    q="${q}&host=${add}&path=$(printf '%s' "$path" | sed 's|/|%2F|g')"
+  fi
+  [[ "$security" == "tls" ]] && q="${q}&sni=${add}"
+  printf 'vless://%s@%s:%s?%s#%s' "$id" "$add" "$port" "$q" "$ps"
+}
+
 if [[ ! -f "$CONFIG" ]]; then
   echo "Error: Xray config not found at $CONFIG"
   exit 1
@@ -74,10 +91,10 @@ jq --arg proto "$PROTOCOL" --argjson client "$CLIENT" '
 
 systemctl restart xray
 
-if [[ "$PROTOCOL" == "vmess" ]]; then
-  HOSTNAME_VAL="$(cat "$DOMAIN_FILE" 2>/dev/null)"
-  [[ -z "$HOSTNAME_VAL" ]] && HOSTNAME_VAL="$(curl -s https://api.ipify.org || hostname -I | awk '{print $1}')"
+HOSTNAME_VAL="$(cat "$DOMAIN_FILE" 2>/dev/null)"
+[[ -z "$HOSTNAME_VAL" ]] && HOSTNAME_VAL="$(curl -s https://api.ipify.org || hostname -I | awk '{print $1}')"
 
+if [[ "$PROTOCOL" == "vmess" ]]; then
   LINK_TLS="$(vmess_link "$USERNAME" "$HOSTNAME_VAL" "443" "$UUID" "ws" "/vmess" "tls")"
   LINK_PLAIN="$(vmess_link "$USERNAME" "$HOSTNAME_VAL" "80" "$UUID" "ws" "/vmess" "")"
   LINK_GRPC="$(vmess_link "$USERNAME" "$HOSTNAME_VAL" "443" "$UUID" "grpc" "vmess-grpc" "tls")"
@@ -108,11 +125,32 @@ Expired On    : ${EXPIRY}
 ====================================
 CARD
 else
-  echo "==========================================="
-  echo " ${PROTOCOL^^} user created"
-  echo "   Username : $USERNAME"
-  echo "   UUID     : $UUID"
-  echo "   Path     : /$PROTOCOL"
-  echo "   Expires  : $EXPIRY"
-  echo "==========================================="
+  LINK_TLS="$(vless_link "$USERNAME" "$HOSTNAME_VAL" "443" "$UUID" "ws" "/vless" "tls")"
+  LINK_PLAIN="$(vless_link "$USERNAME" "$HOSTNAME_VAL" "80" "$UUID" "ws" "/vless" "none")"
+  LINK_GRPC="$(vless_link "$USERNAME" "$HOSTNAME_VAL" "443" "$UUID" "grpc" "vless-grpc" "tls")"
+
+  cat <<CARD
+====================================
+   Xray/Vless Account
+====================================
+Remarks       : ${USERNAME}
+Domain        : ${HOSTNAME_VAL}
+Port TLS      : 443
+Port none TLS : 80
+Port GRPC     : 443
+id            : ${UUID}
+Encryption    : none
+Network       : ws
+Path          : /vless
+ServiceName   : vless-grpc
+====================================
+Link TLS      : ${LINK_TLS}
+====================================
+Link none TLS : ${LINK_PLAIN}
+====================================
+Link GRPC     : ${LINK_GRPC}
+====================================
+Expired On    : ${EXPIRY}
+====================================
+CARD
 fi
