@@ -43,14 +43,14 @@ fi
 export DEBIAN_FRONTEND=noninteractive
 
 # ============================================================
-echo ">>> [1/9] Dependencies"
+echo ">>> [1/10] Dependencies"
 # ============================================================
 apt update -y
 apt install -y curl wget jq unzip socat cron nginx dropbear \
   python3 iptables iptables-persistent
 
 # ============================================================
-echo ">>> [2/9] Directories + copy project files"
+echo ">>> [2/10] Directories + copy project files"
 # ============================================================
 mkdir -p "$INSTALL_DIR"/{core,menu,slowdns} /var/log/vpn-script
 cp "$REPO/core/"*.py    "$INSTALL_DIR/core/" 2>/dev/null || true
@@ -82,7 +82,7 @@ for f in "$INSTALL_DIR/core/ws.py" \
 done
 
 # ============================================================
-echo ">>> [3/9] BBR"
+echo ">>> [3/10] BBR"
 # ============================================================
 cat >/etc/sysctl.d/99-vpn-bbr.conf <<'EOF'
 net.core.default_qdisc=fq
@@ -91,13 +91,13 @@ EOF
 sysctl --system >/dev/null 2>&1 || true
 
 # ============================================================
-echo ">>> [4/9] Xray-core + config"
+echo ">>> [4/10] Xray-core + config"
 # ============================================================
 bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install
 install -m 644 "$REPO/core/config.json" /usr/local/etc/xray/config.json
 
 # ============================================================
-echo ">>> [5/9] TLS cert + Nginx front door (80 / 8080 / 443)"
+echo ">>> [5/10] TLS cert + Nginx front door (80 / 8080 / 443)"
 # ============================================================
 # Cert MUST be created before nginx -t, or the 443 ssl block fails the test.
 read -rp "Enter your TLS/WS domain (e.g. vpn.grab2.eu.cc), blank for self-signed: " WS_DOMAIN
@@ -110,7 +110,7 @@ nginx -t
 systemctl restart nginx
 
 # ============================================================
-echo ">>> [6/9] Dropbear + SSH-WS proxy"
+echo ">>> [6/10] Dropbear + SSH-WS proxy"
 # ============================================================
 bash "$REPO/core/dropbear.sh"
 
@@ -133,7 +133,7 @@ WantedBy=multi-user.target
 EOF
 
 # ============================================================
-echo ">>> [7/9] SlowDNS (needs your NS domain)"
+echo ">>> [7/10] SlowDNS (needs your NS domain)"
 # ============================================================
 bash "$REPO/core/slowdns.sh"
 
@@ -160,7 +160,7 @@ ln -sf /run/systemd/resolve/resolv.conf /etc/resolv.conf 2>/dev/null || true
 systemctl restart systemd-resolved || true
 
 # ============================================================
-echo ">>> [8/9] Enable + start all services"
+echo ">>> [8/10] Enable + start all services"
 # ============================================================
 systemctl daemon-reload
 # guard against a stale mask from any earlier partial run
@@ -181,7 +181,25 @@ if ! systemctl is-active --quiet ws-proxy; then
 fi
 
 # ============================================================
-echo ">>> [9/9] Global 'menu' command"
+echo ">>> [9/10] Optional services (HAProxy, SSLH, OpenVPN, Proxy)"
+# ============================================================
+# These ship enabled by default. Each is self-contained and non-fatal to
+# the base install if one fails — the core VPN service is already up by
+# this point, so we warn and move on rather than aborting the whole
+# install (OpenVPN especially: first-run PKI + DH generation can take a
+# few minutes and is the one step here most likely to hiccup).
+bash "$INSTALL_DIR/core/haproxy.sh" enable \
+  || echo "WARNING: HAProxy did not enable cleanly — retry via: menu > Settings > Toggle HAProxy"
+bash "$INSTALL_DIR/core/sslh.sh" enable \
+  || echo "WARNING: SSLH did not enable cleanly — retry via: menu > Settings > Toggle SSLH Multiplex"
+echo ">>> Enabling OpenVPN (first run builds a PKI + DH params, can take a few minutes)..."
+bash "$INSTALL_DIR/core/openvpn.sh" enable \
+  || echo "WARNING: OpenVPN did not enable cleanly — retry via: menu > Settings > Toggle OpenVPN"
+bash "$INSTALL_DIR/core/proxy.sh" enable \
+  || echo "WARNING: HTTP/SOCKS5 proxy did not enable cleanly — retry via: menu > Settings > Toggle HTTP & SOCKS Proxy"
+
+# ============================================================
+echo ">>> [10/10] Global 'menu' command"
 # ============================================================
 ln -sf "$INSTALL_DIR/menu/menu.sh" /usr/local/bin/menu
 chmod +x /usr/local/bin/menu
