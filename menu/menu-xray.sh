@@ -67,7 +67,10 @@ while true; do
       else echo "${PROTO_DISPLAY} isn't built yet."; fi
       pause ;;
 
-    2|02) echo "Trial account — not built yet."; pause ;;
+    2|02)
+      if [[ "$PROTO" == "vmess" ]]; then bash "$BASE/trial-vmess-user.sh"
+      else echo "Trial account — not built yet."; fi
+      pause ;;
     5|05) echo "Check active user — not built yet."; pause ;;
 
     0|00) exit 0 ;;

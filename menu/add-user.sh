@@ -6,11 +6,22 @@ set -euo pipefail
 
 CONFIG="/usr/local/etc/xray/config.json"
 PROTOCOL="${1:-}"
+DOMAIN_FILE="/etc/vpn-script/domain"
 
 if [[ "$PROTOCOL" != "vless" && "$PROTOCOL" != "vmess" ]]; then
   echo "Usage: add-user.sh <vless|vmess>"
   exit 1
 fi
+
+# vmess:// share-link JSON (v2rayN standard schema — "path", not "bpath")
+# base64'd with no line wrapping: `base64 | tr -d '\n'` is portable across
+# GNU/BSD base64 (unlike relying on a `-w0` flag that not all builds have).
+vmess_link() {
+  local ps="$1" add="$2" port="$3" id="$4" net="$5" path="$6" tls="$7" json
+  json=$(printf '{"v":"2","ps":"%s","add":"%s","port":"%s","id":"%s","aid":"0","scy":"auto","net":"%s","type":"none","host":"","path":"%s","tls":"%s"}' \
+    "$ps" "$add" "$port" "$id" "$net" "$path" "$tls")
+  printf 'vmess://%s' "$(printf '%s' "$json" | base64 | tr -d '\n')"
+}
 
 if [[ ! -f "$CONFIG" ]]; then
   echo "Error: Xray config not found at $CONFIG"
@@ -60,10 +71,45 @@ jq --arg proto "$PROTOCOL" --argjson client "$CLIENT" '
 
 systemctl restart xray
 
-echo "==========================================="
-echo " ${PROTOCOL^^} user created"
-echo "   Username : $USERNAME"
-echo "   UUID     : $UUID"
-echo "   Path     : /$PROTOCOL"
-echo "   Expires  : $EXPIRY"
-echo "==========================================="
+if [[ "$PROTOCOL" == "vmess" ]]; then
+  HOSTNAME_VAL="$(cat "$DOMAIN_FILE" 2>/dev/null)"
+  [[ -z "$HOSTNAME_VAL" ]] && HOSTNAME_VAL="$(curl -s https://api.ipify.org || hostname -I | awk '{print $1}')"
+
+  LINK_TLS="$(vmess_link "$USERNAME" "$HOSTNAME_VAL" "443" "$UUID" "ws" "/vmess" "tls")"
+  LINK_PLAIN="$(vmess_link "$USERNAME" "$HOSTNAME_VAL" "80" "$UUID" "ws" "/vmess" "")"
+  LINK_GRPC="$(vmess_link "$USERNAME" "$HOSTNAME_VAL" "443" "$UUID" "grpc" "vmess-grpc" "tls")"
+
+  cat <<CARD
+====================================
+   Xray/Vmess Account
+====================================
+Remarks       : ${USERNAME}
+Domain        : ${HOSTNAME_VAL}
+Port TLS      : 443
+Port none TLS : 80
+Port GRPC     : 443
+id            : ${UUID}
+alterId       : 0
+Security      : auto
+Network       : ws
+Path          : /vmess
+ServiceName   : vmess-grpc
+====================================
+Link TLS      : ${LINK_TLS}
+====================================
+Link none TLS : ${LINK_PLAIN}
+====================================
+Link GRPC     : ${LINK_GRPC}
+====================================
+Expired On    : ${EXPIRY}
+====================================
+CARD
+else
+  echo "==========================================="
+  echo " ${PROTOCOL^^} user created"
+  echo "   Username : $USERNAME"
+  echo "   UUID     : $UUID"
+  echo "   Path     : /$PROTOCOL"
+  echo "   Expires  : $EXPIRY"
+  echo "==========================================="
+fi
