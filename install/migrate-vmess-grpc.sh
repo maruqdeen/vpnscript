@@ -50,9 +50,12 @@ fi
 # actual fix for the "permission denied" crash affecting installs that ran
 # an earlier version of this script: mktemp+mv silently drops config.json
 # to 600 (root-only), but Xray's official installer runs it as user
-# "nobody", which can then no longer read its own config.
-echo ">>> Ensuring Xray (runs as user 'nobody') can read its own config..."
+# "nobody", which can then no longer read its own config. Same reasoning
+# for the log directory it needs to WRITE to on startup.
+echo ">>> Ensuring Xray (runs as user 'nobody') can read its config and write its logs..."
 chmod 644 "$CONFIG"
+NOBODY_GROUP="$(id -gn nobody 2>/dev/null || echo nogroup)"
+chown -R nobody:"$NOBODY_GROUP" /var/log/vpn-script 2>/dev/null || true
 systemctl restart xray
 sleep 1
 if systemctl is-active --quiet xray; then

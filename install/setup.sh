@@ -53,6 +53,11 @@ apt install -y curl wget jq unzip socat cron nginx dropbear \
 echo ">>> [2/10] Directories + copy project files"
 # ============================================================
 mkdir -p "$INSTALL_DIR"/{core,menu,slowdns} /var/log/vpn-script
+# Xray's official installer runs xray.service as user "nobody" (not root),
+# and it needs to CREATE its own log files here on first write — a
+# root-only directory would silently crash it at startup.
+NOBODY_GROUP="$(id -gn nobody 2>/dev/null || echo nogroup)"
+chown -R nobody:"$NOBODY_GROUP" /var/log/vpn-script
 cp "$REPO/core/"*.py    "$INSTALL_DIR/core/" 2>/dev/null || true
 cp "$REPO/core/"*.sh    "$INSTALL_DIR/core/" 2>/dev/null || true
 cp "$REPO/menu/"*.sh    "$INSTALL_DIR/menu/"
