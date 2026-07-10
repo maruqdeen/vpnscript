@@ -18,8 +18,8 @@ fi
 
 vmess_link() {
   local ps="$1" add="$2" port="$3" id="$4" net="$5" path="$6" tls="$7" json
-  json=$(printf '{"v":"2","ps":"%s","add":"%s","port":"%s","id":"%s","aid":"0","scy":"auto","net":"%s","type":"none","host":"","path":"%s","tls":"%s"}' \
-    "$ps" "$add" "$port" "$id" "$net" "$path" "$tls")
+  json=$(printf '{"v":"2","ps":"%s","add":"%s","port":"%s","id":"%s","aid":"0","scy":"auto","net":"%s","type":"none","host":"%s","path":"%s","tls":"%s","sni":"%s"}' \
+    "$ps" "$add" "$port" "$id" "$net" "$add" "$path" "$tls" "$add")
   printf 'vmess://%s' "$(printf '%s' "$json" | base64 | tr -d '\n')"
 }
 
