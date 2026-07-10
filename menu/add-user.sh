@@ -1,8 +1,7 @@
 #!/bin/bash
 # VPN-Starter-Kit :: menu/add-user.sh
-# Add an Xray user (VLESS, VMess, Trojan, or Shadowsocks) into the live
-# config via jq.
-# Usage: add-user.sh <vless|vmess|trojan|shadowsocks>
+# Add an Xray user (VLESS, VMess, or Trojan) into the live config via jq.
+# Usage: add-user.sh <vless|vmess|trojan>
 set -euo pipefail
 
 CONFIG="/usr/local/etc/xray/config.json"
@@ -10,8 +9,8 @@ PROTOCOL="${1:-}"
 DOMAIN_FILE="/etc/vpn-script/domain"
 
 case "$PROTOCOL" in
-  vless|vmess|trojan|shadowsocks) ;;
-  *) echo "Usage: add-user.sh <vless|vmess|trojan|shadowsocks>"; exit 1 ;;
+  vless|vmess|trojan) ;;
+  *) echo "Usage: add-user.sh <vless|vmess|trojan>"; exit 1 ;;
 esac
 
 # vmess:// share-link JSON (v2rayN standard schema — "path", not "bpath").
@@ -58,29 +57,6 @@ trojan_link() {
   fi
   q="${q}&sni=${add}"
   printf 'trojan://%s@%s:%s?%s#%s' "$password" "$add" "$port" "$q" "$ps"
-}
-
-# ss:// share link. userinfo = base64(method:password) — standard base64,
-# not the URL-safe SIP002 variant, since this targets the same Xray/V2Ray
-# client family (v2rayNG, NekoBox) already confirmed working for the
-# links above, not shadowsocks-libev/Outline cross-compatibility. The
-# type/host/path/serviceName/security/sni query params mirror vless://'s
-# convention rather than SIP002's plugin= mechanism, because our WS/gRPC
-# transport is native Xray config on both ends, not a client-side plugin
-# binary. If a client fails to auto-import this, method+password+path
-# still work entered manually into its SS screen — the server side is
-# standard Xray SS+WS/gRPC regardless of how the link itself parses.
-ss_link() {
-  local ps="$1" add="$2" port="$3" method="$4" password="$5" net="$6" path="$7" security="$8" q userinfo
-  userinfo="$(printf '%s' "${method}:${password}" | base64 | tr -d '\n')"
-  q="type=${net}"
-  if [[ "$net" == "grpc" ]]; then
-    q="${q}&serviceName=${path}"
-  else
-    q="${q}&host=${add}&path=$(printf '%s' "$path" | sed 's|/|%2F|g')"
-  fi
-  [[ "$security" == "tls" ]] && q="${q}&security=tls&sni=${add}"
-  printf 'ss://%s@%s:%s?%s#%s' "$userinfo" "$add" "$port" "$q" "$ps"
 }
 
 if [[ ! -f "$CONFIG" ]]; then
@@ -130,12 +106,6 @@ case "$PROTOCOL" in
     # practice (it's just a convenient, already-generated random secret).
     CLIENT=$(jq -n --arg password "$UUID" --arg email "$EMAIL_TAG" \
       '{password:$password, email:$email}')
-    ;;
-  shadowsocks)
-    # aes-256-gcm: widely supported by every SS-capable client, unlike the
-    # newer 2022-blake3 ciphers which need server-PSK/sub-key handling.
-    CLIENT=$(jq -n --arg method "aes-256-gcm" --arg password "$UUID" --arg email "$EMAIL_TAG" \
-      '{method:$method, password:$password, email:$email}')
     ;;
 esac
 
@@ -230,36 +200,6 @@ Path          : /trojan
 ServiceName   : trojan-grpc
 ====================================
 Link TLS      : ${LINK_TLS}
-====================================
-Link GRPC     : ${LINK_GRPC}
-====================================
-Expired On    : ${EXPIRY}
-====================================
-CARD
-  ;;
-shadowsocks)
-  LINK_TLS="$(ss_link "$USERNAME" "$HOSTNAME_VAL" "443" "aes-256-gcm" "$UUID" "ws" "/ss" "tls")"
-  LINK_PLAIN="$(ss_link "$USERNAME" "$HOSTNAME_VAL" "80" "aes-256-gcm" "$UUID" "ws" "/ss" "none")"
-  LINK_GRPC="$(ss_link "$USERNAME" "$HOSTNAME_VAL" "443" "aes-256-gcm" "$UUID" "grpc" "ss-grpc" "tls")"
-
-  cat <<CARD
-====================================
-   Xray/Shadowsocks Account
-====================================
-Remarks       : ${USERNAME}
-Domain        : ${HOSTNAME_VAL}
-Port TLS      : 443
-Port none TLS : 80
-Port GRPC     : 443
-Method        : aes-256-gcm
-password      : ${UUID}
-Network       : ws
-Path          : /ss
-ServiceName   : ss-grpc
-====================================
-Link TLS      : ${LINK_TLS}
-====================================
-Link none TLS : ${LINK_PLAIN}
 ====================================
 Link GRPC     : ${LINK_GRPC}
 ====================================

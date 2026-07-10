@@ -14,6 +14,7 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 source "$BASE/lib-ssh-users.sh"
+source "$INSTALL_DIR/core/wireguard.sh"
 
 # ---- colors ----
 G=$'\e[32m'; R=$'\e[31m'; Y=$'\e[33m'; C=$'\e[36m'; B=$'\e[1m'; D=$'\e[2m'; X=$'\e[0m'
@@ -81,18 +82,18 @@ draw_header() {
   printf "  %s | %s | %s\n" "$(svc openvpn@vpn-tcp1194 OVPN-TCP)" "$(svc openvpn@vpn-udp1194 OVPN-UDP)" "$(svc squid Proxy)"
 
   # --- ACTIVE ACCOUNT ---
-  local ssh_count vmess_count vless_count trojan_count ss_count
+  local ssh_count vmess_count vless_count trojan_count wg_count
   ssh_count="$(ssh_user_list | grep -c .)"
   vmess_count="$(count_xray vmess)"
   vless_count="$(count_xray vless)"
   trojan_count="$(count_xray trojan)"
-  ss_count="$(count_xray shadowsocks)"
+  wg_count="$(jq 'length' "$WG_CLIENTS_JSON" 2>/dev/null || echo 0)"
 
   echo ""
   line "ACTIVE ACCOUNT"
   echo ""
-  printf "  SSH : %s | Vmess: %s | Vless: %s | Trojan: %s | ss: %s\n" \
-    "$ssh_count" "$vmess_count" "$vless_count" "$trojan_count" "$ss_count"
+  printf "  SSH : %s | Vmess: %s | Vless: %s | Trojan: %s | Wireguard: %s\n" \
+    "$ssh_count" "$vmess_count" "$vless_count" "$trojan_count" "$wg_count"
 
   # --- CONTROL MANAGER ---
   echo ""
@@ -108,7 +109,7 @@ while true; do
   printf "  ${B}[2]${X} VMess Menu           ${B}[7]${X}  Running Service\n"
   printf "  ${B}[3]${X} VLESS Menu           ${B}[8]${X}  Bot & Api Setup\n"
   printf "  ${B}[4]${X} Trojan Menu          ${B}[9]${X}  Security Mgt\n"
-  printf "  ${B}[5]${X} SS Menu              ${B}[10]${X} WebMin\n"
+  printf "  ${B}[5]${X} Wireguard Menu       ${B}[10]${X} WebMin\n"
   echo ""
   printf "  ${B}[0]${X} Exit\n"
   echo ""
@@ -120,7 +121,7 @@ while true; do
     2)  bash "$BASE/menu-xray.sh" vmess ;;
     3)  bash "$BASE/menu-xray.sh" vless ;;
     4)  bash "$BASE/menu-xray.sh" trojan ;;
-    5)  bash "$BASE/menu-xray.sh" shadowsocks ;;
+    5)  bash "$BASE/menu-wireguard.sh" ;;
     6)  bash "$BASE/menu-settings.sh" ;;
     7)  systemctl --no-pager --type=service | grep -E 'xray|nginx|dropbear|ws-proxy|slowdns' ; pause ;;
     8)  echo "Bot & Api Setup — not built yet." ; pause ;;

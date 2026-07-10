@@ -1,8 +1,8 @@
 #!/bin/bash
 # VPN-Starter-Kit :: menu/menu-xray.sh
-# Shared submenu for Xray protocols: vmess, vless, trojan, shadowsocks —
-# all four have a working backend (Xray inbound + nginx route).
-# Usage: menu-xray.sh <vmess|vless|trojan|shadowsocks>
+# Shared submenu for Xray protocols: vmess, vless, trojan — all three have
+# a working backend (Xray inbound + nginx route).
+# Usage: menu-xray.sh <vmess|vless|trojan>
 set -uo pipefail
 
 BASE="/etc/vpn-script/menu"
@@ -10,12 +10,11 @@ PROTO="${1:-}"
 
 if [[ $EUID -ne 0 ]]; then echo "Run as root."; exit 1; fi
 case "$PROTO" in
-  vmess|vless|trojan|shadowsocks) ;;
-  *) echo "Usage: menu-xray.sh <vmess|vless|trojan|shadowsocks>"; exit 1 ;;
+  vmess|vless|trojan) ;;
+  *) echo "Usage: menu-xray.sh <vmess|vless|trojan>"; exit 1 ;;
 esac
 
 PROTO_UP="$(echo "$PROTO" | tr '[:lower:]' '[:upper:]')"
-[[ "$PROTO" == "shadowsocks" ]] && PROTO_UP="SS"
 PROTO_DISPLAY="${PROTO^}"
 
 # colors
@@ -54,10 +53,9 @@ while true; do
 
     2|02)
       case "$PROTO" in
-        vmess)       bash "$BASE/trial-vmess-user.sh" ;;
-        vless)       bash "$BASE/trial-vless-user.sh" ;;
-        trojan)      bash "$BASE/trial-trojan-user.sh" ;;
-        shadowsocks) bash "$BASE/trial-ss-user.sh" ;;
+        vmess)  bash "$BASE/trial-vmess-user.sh" ;;
+        vless)  bash "$BASE/trial-vless-user.sh" ;;
+        trojan) bash "$BASE/trial-trojan-user.sh" ;;
       esac
       pause ;;
     5|05) echo "Check active user — not built yet."; pause ;;
