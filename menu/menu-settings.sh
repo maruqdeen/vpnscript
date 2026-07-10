@@ -57,13 +57,15 @@ change_domains() {
 
 # ---- [02] All Service Port Info ----
 port_info() {
-  local domain nsdomain engine haproxy_status sslh_status badvpn_status
+  local domain nsdomain engine haproxy_status sslh_status badvpn_status ovpn_status proxy_status
   domain="$(cat "$DOMAIN_FILE" 2>/dev/null)"; [[ -z "$domain" ]] && domain="(not set)"
   nsdomain="$(cat "$NS_DOMAIN_FILE" 2>/dev/null)"; [[ -z "$nsdomain" ]] && nsdomain="(not set)"
   engine="$(cat "$INSTALL_DIR/ssh-engine" 2>/dev/null || echo both)"
   [[ -f "$INSTALL_DIR/haproxy.enabled" ]] && haproxy_status="ON" || haproxy_status="off"
   [[ -f "$INSTALL_DIR/sslh.enabled" ]]    && sslh_status="ON"    || sslh_status="off"
   [[ -f "$INSTALL_DIR/badvpn.enabled" ]]  && badvpn_status="ON"  || badvpn_status="off"
+  [[ -f "$INSTALL_DIR/openvpn.enabled" ]] && ovpn_status="ON"    || ovpn_status="off"
+  [[ -f "$INSTALL_DIR/proxy.enabled" ]]   && proxy_status="ON"   || proxy_status="off"
 
   printf '%s\n' "===================================================="
   echo " SERVICE PORTS"
@@ -77,6 +79,11 @@ port_info() {
   printf "  %-26s %s\n" "HAProxy SSH-SSL [$haproxy_status]" "444"
   printf "  %-26s %s\n" "SSLH multiplex [$sslh_status]" "446"
   printf "  %-26s %s\n" "BadVPN UDPGW [$badvpn_status]" "127.0.0.1:7300 (tunnel-only)"
+  printf "  %-26s %s\n" "OpenVPN TCP [$ovpn_status]" "1194"
+  printf "  %-26s %s\n" "OpenVPN UDP [$ovpn_status]" "1194, 443"
+  printf "  %-26s %s\n" "OVPN download portal [$ovpn_status]" "85 (tcp), 81 (udp)"
+  printf "  %-26s %s\n" "HTTP Proxy [$proxy_status]" "3128"
+  printf "  %-26s %s\n" "SOCKS5 Proxy [$proxy_status]" "1080"
   echo ""
   printf "  TLS/WS domain : %s\n" "$domain"
   printf "  SlowDNS NS    : %s\n" "$nsdomain"
@@ -160,7 +167,7 @@ check_running() {
   printf '%s\n' "===================================================="
   echo " RUNNING SERVICES"
   printf '%s\n' "===================================================="
-  systemctl --no-pager --type=service | grep -E 'xray|nginx|dropbear|ws-proxy|slowdns|cron|vpn-haproxy|vpn-sslh|vpn-badvpn'
+  systemctl --no-pager --type=service | grep -E 'xray|nginx|dropbear|ws-proxy|slowdns|cron|vpn-haproxy|vpn-sslh|vpn-badvpn|openvpn|squid|danted'
 }
 
 # ---- [07] Restart All Service ----
@@ -180,6 +187,14 @@ restart_all() {
     && printf "  %svpn-sslh%s restarted\n" "$G" "$X"
   [[ -f "$INSTALL_DIR/badvpn.enabled" ]]  && systemctl restart vpn-badvpn 2>/dev/null \
     && printf "  %svpn-badvpn%s restarted\n" "$G" "$X"
+  if [[ -f "$INSTALL_DIR/openvpn.enabled" ]]; then
+    systemctl restart openvpn@vpn-tcp1194 openvpn@vpn-udp1194 openvpn@vpn-udp443 2>/dev/null \
+      && printf "  %sopenvpn (tcp1194/udp1194/udp443)%s restarted\n" "$G" "$X"
+  fi
+  if [[ -f "$INSTALL_DIR/proxy.enabled" ]]; then
+    systemctl restart squid danted 2>/dev/null \
+      && printf "  %ssquid + danted%s restarted\n" "$G" "$X"
+  fi
 }
 
 # ---- [08] Change Banner ----
@@ -288,6 +303,48 @@ toggle_badvpn() {
   esac
 }
 
+# ---- [13] Toggle OpenVPN (TCP/UDP) ----
+toggle_openvpn() {
+  if [[ -f "$INSTALL_DIR/openvpn.enabled" ]]; then
+    echo "OpenVPN (TCP/1194, UDP/1194, UDP/443): ENABLED"
+  else
+    echo "OpenVPN (TCP/1194, UDP/1194, UDP/443): DISABLED"
+  fi
+  echo "(TCP/443 is skipped — nginx already owns TCP 443)"
+  echo ""
+  echo "  [1] Enable  (first run builds a PKI + generates DH params, can take a few minutes)"
+  echo "  [2] Disable"
+  echo "  [0] Back"
+  read -rp "Choose: " opt
+  case "$opt" in
+    1) bash "$CORE_DIR/openvpn.sh" enable ;;
+    2) bash "$CORE_DIR/openvpn.sh" disable ;;
+    0) return ;;
+    *) echo "Invalid option." ;;
+  esac
+}
+
+# ---- [14] Toggle HTTP & SOCKS Proxy ----
+toggle_proxy() {
+  if [[ -f "$INSTALL_DIR/proxy.enabled" ]]; then
+    echo "HTTP Proxy (3128) + SOCKS5 (1080): ENABLED"
+  else
+    echo "HTTP Proxy (3128) + SOCKS5 (1080): DISABLED"
+  fi
+  echo "(uses the same username/password as your SSH accounts)"
+  echo ""
+  echo "  [1] Enable"
+  echo "  [2] Disable"
+  echo "  [0] Back"
+  read -rp "Choose: " opt
+  case "$opt" in
+    1) bash "$CORE_DIR/proxy.sh" enable ;;
+    2) bash "$CORE_DIR/proxy.sh" disable ;;
+    0) return ;;
+    *) echo "Invalid option." ;;
+  esac
+}
+
 while true; do
   clear
   echo ""
@@ -307,6 +364,8 @@ while true; do
   printf "  ${BL}[10]${X} Toggle SSLH Multiplex\n"
   printf "  ${BL}[11]${X} SSH Tunnel Engine (Dropbear/OpenSSH/Both)\n"
   printf "  ${BL}[12]${X} Toggle BadVPN (UDPGW)\n"
+  printf "  ${BL}[13]${X} Toggle OpenVPN (TCP/UDP)\n"
+  printf "  ${BL}[14]${X} Toggle HTTP & SOCKS Proxy\n"
   echo ""
   printf "  ${Y}[00]${X} Main Menu\n"
   echo ""
@@ -325,6 +384,8 @@ while true; do
     10)   toggle_sslh ; pause ;;
     11)   set_ssh_engine ; pause ;;
     12)   toggle_badvpn ; pause ;;
+    13)   toggle_openvpn ; pause ;;
+    14)   toggle_proxy ; pause ;;
     0|00) exit 0 ;;
     *) echo "Invalid option."; sleep 1 ;;
   esac

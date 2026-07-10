@@ -74,6 +74,14 @@ SSH (WS|SSL)
   - Tls port  : 443
   - Payload   : GET / HTTP/1.1[crlf]Host: [host][crlf]Connection: Upgrade[crlf]User-Agent: [ua][crlf]Upgrade: websocket[crlf][crlf]
 ================================
+OVPN (TCP|UDP)
+  - Ovpn Tcp     : http://${HOSTNAME_VAL}:85/ovpn/client-tcp.ovpn
+  - Ovpn Udp     : http://${HOSTNAME_VAL}:81/ovpn/client-udp.ovpn
+================================
+HTTP & SOCKS PROXY
+  - HTTP Proxy   : ${HOSTNAME_VAL}:3128:${USERNAME}:${PASSWORD}
+  - SOCKS5 Proxy : ${HOSTNAME_VAL}:1080:${USERNAME}:${PASSWORD}
+================================
 DNSTT (SlowDNS):
   - Nameserver : ${NS_DOMAIN}
   - PubKey     :

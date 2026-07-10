@@ -78,6 +78,7 @@ draw_header() {
   printf "  %s | %s | %s\n" "$(svc ssh SSH)" "$(svc nginx Nginx)" "$(svc dropbear Dropbear)"
   printf "  %s | %s | %s\n" "$(svc slowdns Slowdns)" "$(svc xray Xray)" "$(svc ws-proxy SSH-WS)"
   printf "  %s | %s | %s\n" "$(svc vpn-haproxy HAProxy)" "$(svc vpn-sslh SSLH)" "$(svc vpn-badvpn BadVPN)"
+  printf "  %s | %s | %s\n" "$(svc openvpn@vpn-tcp1194 OVPN-TCP)" "$(svc openvpn@vpn-udp1194 OVPN-UDP)" "$(svc squid Proxy)"
 
   # --- ACTIVE ACCOUNT ---
   local ssh_count vmess_count vless_count trojan_count ss_count
