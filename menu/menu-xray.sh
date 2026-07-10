@@ -1,9 +1,8 @@
 #!/bin/bash
 # VPN-Starter-Kit :: menu/menu-xray.sh
-# Shared submenu for Xray protocols.
+# Shared submenu for Xray protocols: vmess, vless, trojan, shadowsocks —
+# all four have a working backend (Xray inbound + nginx route).
 # Usage: menu-xray.sh <vmess|vless|trojan|shadowsocks>
-# vmess/vless/trojan have a working backend (Xray inbound + nginx route);
-# shadowsocks doesn't yet, so its options are stubbed until that's built.
 set -uo pipefail
 
 BASE="/etc/vpn-script/menu"
@@ -18,11 +17,6 @@ esac
 PROTO_UP="$(echo "$PROTO" | tr '[:lower:]' '[:upper:]')"
 [[ "$PROTO" == "shadowsocks" ]] && PROTO_UP="SS"
 PROTO_DISPLAY="${PROTO^}"
-
-BUILT=1
-case "$PROTO" in
-  shadowsocks) BUILT=0 ;;
-esac
 
 # colors
 BL=$'\e[38;5;111m'; Y=$'\e[33m'; X=$'\e[0m'
@@ -54,25 +48,16 @@ while true; do
   read -rp " Select menu : " opt
 
   case "$opt" in
-    1|01)
-      if (( BUILT )); then bash "$BASE/add-user.sh" "$PROTO"
-      else echo "${PROTO_DISPLAY} isn't built yet."; fi
-      pause ;;
-    3|03)
-      if (( BUILT )); then bash "$BASE/renew-user.sh" "$PROTO"
-      else echo "${PROTO_DISPLAY} isn't built yet."; fi
-      pause ;;
-    4|04)
-      if (( BUILT )); then bash "$BASE/del-user.sh" "$PROTO"
-      else echo "${PROTO_DISPLAY} isn't built yet."; fi
-      pause ;;
+    1|01) bash "$BASE/add-user.sh" "$PROTO" ; pause ;;
+    3|03) bash "$BASE/renew-user.sh" "$PROTO" ; pause ;;
+    4|04) bash "$BASE/del-user.sh" "$PROTO" ; pause ;;
 
     2|02)
       case "$PROTO" in
-        vmess)  bash "$BASE/trial-vmess-user.sh" ;;
-        vless)  bash "$BASE/trial-vless-user.sh" ;;
-        trojan) bash "$BASE/trial-trojan-user.sh" ;;
-        *) echo "Trial account — not built yet." ;;
+        vmess)       bash "$BASE/trial-vmess-user.sh" ;;
+        vless)       bash "$BASE/trial-vless-user.sh" ;;
+        trojan)      bash "$BASE/trial-trojan-user.sh" ;;
+        shadowsocks) bash "$BASE/trial-ss-user.sh" ;;
       esac
       pause ;;
     5|05) echo "Check active user — not built yet."; pause ;;
