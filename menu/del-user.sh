@@ -45,7 +45,7 @@ delete_xray() {
   jq --arg p "$proto" --arg email "$match" '
     (.inbounds[] | select(.protocol==$p) | .settings.clients)
       |= map(select(.email != $email))
-  ' "$CONFIG" > "$tmp" && mv "$tmp" "$CONFIG"
+  ' "$CONFIG" > "$tmp" && chmod 644 "$tmp" && mv "$tmp" "$CONFIG"
 
   systemctl restart xray
   echo "Deleted $proto user '$NAME'."

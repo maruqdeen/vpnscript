@@ -48,7 +48,7 @@ CLIENT=$(jq -n --arg id "$UUID" --arg email "$EMAIL_TAG" '{id:$id, alterId:0, em
 tmp=$(mktemp)
 jq --argjson client "$CLIENT" '
   (.inbounds[] | select(.protocol=="vmess") | .settings.clients) += [$client]
-' "$CONFIG" > "$tmp" && mv "$tmp" "$CONFIG"
+' "$CONFIG" > "$tmp" && chmod 644 "$tmp" && mv "$tmp" "$CONFIG"
 
 systemctl restart xray
 

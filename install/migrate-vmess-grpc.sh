@@ -42,9 +42,23 @@ else
       "settings": { "clients": (.inbounds[] | select(.tag=="vmess-ws") | .settings.clients) },
       "streamSettings": { "network": "grpc", "grpcSettings": { "serviceName": "vmess-grpc" } }
     }]
-  ' "$CONFIG" > "$tmp" && mv "$tmp" "$CONFIG"
-  systemctl restart xray
+  ' "$CONFIG" > "$tmp" && chmod 644 "$tmp" && mv "$tmp" "$CONFIG"
   echo "    done — existing VMess users now also work over gRPC (backup saved alongside config.json)."
+fi
+
+# Always re-assert this, even on the "already present" path — this is the
+# actual fix for the "permission denied" crash affecting installs that ran
+# an earlier version of this script: mktemp+mv silently drops config.json
+# to 600 (root-only), but Xray's official installer runs it as user
+# "nobody", which can then no longer read its own config.
+echo ">>> Ensuring Xray (runs as user 'nobody') can read its own config..."
+chmod 644 "$CONFIG"
+systemctl restart xray
+sleep 1
+if systemctl is-active --quiet xray; then
+  echo "    xray is active."
+else
+  echo "    WARNING: xray still isn't active — check: journalctl -u xray -n 30 --no-pager"
 fi
 
 echo ""

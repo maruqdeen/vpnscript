@@ -67,7 +67,7 @@ fi
 tmp=$(mktemp)
 jq --arg proto "$PROTOCOL" --argjson client "$CLIENT" '
   (.inbounds[] | select(.protocol==$proto) | .settings.clients) += [$client]
-' "$CONFIG" > "$tmp" && mv "$tmp" "$CONFIG"
+' "$CONFIG" > "$tmp" && chmod 644 "$tmp" && mv "$tmp" "$CONFIG"
 
 systemctl restart xray
 

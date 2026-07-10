@@ -50,7 +50,7 @@ renew_xray() {
   jq --arg p "$proto" --arg old "$old" --arg new "$new_tag" '
     (.inbounds[] | select(.protocol==$p) | .settings.clients[]
      | select(.email==$old) | .email) = $new
-  ' "$CONFIG" > "$tmp" && mv "$tmp" "$CONFIG"
+  ' "$CONFIG" > "$tmp" && chmod 644 "$tmp" && mv "$tmp" "$CONFIG"
 
   systemctl restart xray
   echo "Renewed $proto user '$NAME' -> expires $new_exp."
