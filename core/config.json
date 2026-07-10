@@ -58,6 +58,32 @@
         "network": "grpc",
         "grpcSettings": { "serviceName": "vless-grpc" }
       }
+    },
+    {
+      "tag": "trojan-ws",
+      "port": 10005,
+      "listen": "127.0.0.1",
+      "protocol": "trojan",
+      "settings": {
+        "clients": []
+      },
+      "streamSettings": {
+        "network": "ws",
+        "wsSettings": { "path": "/trojan" }
+      }
+    },
+    {
+      "tag": "trojan-grpc",
+      "port": 10006,
+      "listen": "127.0.0.1",
+      "protocol": "trojan",
+      "settings": {
+        "clients": []
+      },
+      "streamSettings": {
+        "network": "grpc",
+        "grpcSettings": { "serviceName": "trojan-grpc" }
+      }
     }
   ],
   "outbounds": [

@@ -75,21 +75,24 @@ delete_ssh() {
 }
 
 case "$TYPE_ARG" in
-  vless) delete_xray vless ;;
-  vmess) delete_xray vmess ;;
-  ssh)   delete_ssh ;;
+  vless)  delete_xray vless ;;
+  vmess)  delete_xray vmess ;;
+  trojan) delete_xray trojan ;;
+  ssh)    delete_ssh ;;
   "")
     echo "What type of user do you want to delete?"
     echo "  [1] Xray VLESS"
     echo "  [2] Xray VMess"
-    echo "  [3] SSH / SlowDNS"
+    echo "  [3] Xray Trojan"
+    echo "  [4] SSH / SlowDNS"
     read -rp "Choose: " TYPE
     case "$TYPE" in
       1) delete_xray vless ;;
       2) delete_xray vmess ;;
-      3) delete_ssh ;;
+      3) delete_xray trojan ;;
+      4) delete_ssh ;;
       *) echo "Invalid choice." ;;
     esac
     ;;
-  *) echo "Usage: del-user.sh [ssh|vless|vmess]"; exit 1 ;;
+  *) echo "Usage: del-user.sh [ssh|vless|vmess|trojan]"; exit 1 ;;
 esac

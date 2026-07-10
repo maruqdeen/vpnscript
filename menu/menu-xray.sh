@@ -2,8 +2,8 @@
 # VPN-Starter-Kit :: menu/menu-xray.sh
 # Shared submenu for Xray protocols.
 # Usage: menu-xray.sh <vmess|vless|trojan|shadowsocks>
-# vmess/vless have a working backend (Xray inbound + nginx route); trojan and
-# shadowsocks don't yet, so their options are stubbed until that's built.
+# vmess/vless/trojan have a working backend (Xray inbound + nginx route);
+# shadowsocks doesn't yet, so its options are stubbed until that's built.
 set -uo pipefail
 
 BASE="/etc/vpn-script/menu"
@@ -21,7 +21,7 @@ PROTO_DISPLAY="${PROTO^}"
 
 BUILT=1
 case "$PROTO" in
-  trojan|shadowsocks) BUILT=0 ;;
+  shadowsocks) BUILT=0 ;;
 esac
 
 # colors
@@ -69,8 +69,9 @@ while true; do
 
     2|02)
       case "$PROTO" in
-        vmess) bash "$BASE/trial-vmess-user.sh" ;;
-        vless) bash "$BASE/trial-vless-user.sh" ;;
+        vmess)  bash "$BASE/trial-vmess-user.sh" ;;
+        vless)  bash "$BASE/trial-vless-user.sh" ;;
+        trojan) bash "$BASE/trial-trojan-user.sh" ;;
         *) echo "Trial account — not built yet." ;;
       esac
       pause ;;

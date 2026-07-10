@@ -79,21 +79,24 @@ renew_ssh() {
 }
 
 case "$TYPE_ARG" in
-  vless) renew_xray vless ;;
-  vmess) renew_xray vmess ;;
-  ssh)   renew_ssh ;;
+  vless)  renew_xray vless ;;
+  vmess)  renew_xray vmess ;;
+  trojan) renew_xray trojan ;;
+  ssh)    renew_ssh ;;
   "")
     echo "What type of user do you want to renew?"
     echo "  [1] Xray VLESS"
     echo "  [2] Xray VMess"
-    echo "  [3] SSH / SlowDNS"
+    echo "  [3] Xray Trojan"
+    echo "  [4] SSH / SlowDNS"
     read -rp "Choose: " TYPE
     case "$TYPE" in
       1) renew_xray vless ;;
       2) renew_xray vmess ;;
-      3) renew_ssh ;;
+      3) renew_xray trojan ;;
+      4) renew_ssh ;;
       *) echo "Invalid choice." ;;
     esac
     ;;
-  *) echo "Usage: renew-user.sh [ssh|vless|vmess]"; exit 1 ;;
+  *) echo "Usage: renew-user.sh [ssh|vless|vmess|trojan]"; exit 1 ;;
 esac
