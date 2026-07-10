@@ -12,7 +12,21 @@ import sys
 LISTEN_HOST = "0.0.0.0"
 LISTEN_PORT = 8880            # public port clients connect to
 TARGET_HOST = "127.0.0.1"    # local SSH daemon
-TARGET_PORT = 143            # Dropbear will listen here (set in File... Dropbear stage)
+
+# Which local sshd to bridge into (Dropbear 143 or OpenSSH 22) is switchable
+# from Settings > SSH Tunnel Engine (core/ssh-engine.sh writes this file).
+TARGET_PORT_FILE = "/etc/vpn-script/ssh-target-port"
+
+
+def _read_target_port():
+    try:
+        with open(TARGET_PORT_FILE) as f:
+            return int(f.read().strip())
+    except (OSError, ValueError):
+        return 143  # Dropbear default
+
+
+TARGET_PORT = _read_target_port()
 BUFFER = 4096
 
 # The banner sent back to the client to complete the "upgrade".

@@ -31,13 +31,15 @@ change_domains() {
   echo "Current primary domain : $(cat "$DOMAIN_FILE" 2>/dev/null || echo '(not set)')"
   read -rp "New primary (TLS/WS) domain [blank = keep current]: " NEW_DOMAIN
   if [[ -n "$NEW_DOMAIN" ]]; then
-    if [[ ! -x "$CORE_DIR/tls.sh" ]]; then
+    if [[ ! -f "$CORE_DIR/tls.sh" ]]; then
       echo "Missing $CORE_DIR/tls.sh — re-run the installer (or copy core/tls.sh"
       echo "from the repo into $CORE_DIR/) before changing the domain."
     else
       echo "$NEW_DOMAIN" > "$DOMAIN_FILE"
       echo ">>> Reissuing TLS cert for '$NEW_DOMAIN' (nginx restarts briefly)..."
       bash "$CORE_DIR/tls.sh" "$NEW_DOMAIN"
+      # HAProxy's combined pem is derived from this cert — refresh it too.
+      [[ -f "$CORE_DIR/haproxy.sh" ]] && bash "$CORE_DIR/haproxy.sh" regen
     fi
   fi
 
@@ -46,26 +48,8 @@ change_domains() {
   read -rp "New SlowDNS NS domain [blank = keep current]: " NEW_NS
   if [[ -n "$NEW_NS" ]]; then
     echo "$NEW_NS" > "$NS_DOMAIN_FILE"
-    cat > /etc/systemd/system/slowdns.service <<EOF
-[Unit]
-Description=SlowDNS (DNSTT) Server (VPN-Starter-Kit)
-After=network.target
-
-[Service]
-Type=simple
-ExecStart=/etc/vpn-script/slowdns/dnstt-server \\
-  -udp :5300 \\
-  -privkey-file /etc/vpn-script/slowdns/server.key \\
-  ${NEW_NS} \\
-  127.0.0.1:143
-Restart=always
-RestartSec=3
-LimitNOFILE=65535
-
-[Install]
-WantedBy=multi-user.target
-EOF
-    systemctl daemon-reload
+    source "$CORE_DIR/lib-slowdns-unit.sh"
+    write_slowdns_unit "$NEW_NS" "$(cat "$INSTALL_DIR/ssh-target-port" 2>/dev/null || echo 143)"
     systemctl restart slowdns
     echo "NS domain updated -> $NEW_NS (slowdns restarted)."
   fi
@@ -73,9 +57,13 @@ EOF
 
 # ---- [02] All Service Port Info ----
 port_info() {
-  local domain nsdomain
+  local domain nsdomain engine haproxy_status sslh_status badvpn_status
   domain="$(cat "$DOMAIN_FILE" 2>/dev/null)"; [[ -z "$domain" ]] && domain="(not set)"
   nsdomain="$(cat "$NS_DOMAIN_FILE" 2>/dev/null)"; [[ -z "$nsdomain" ]] && nsdomain="(not set)"
+  engine="$(cat "$INSTALL_DIR/ssh-engine" 2>/dev/null || echo both)"
+  [[ -f "$INSTALL_DIR/haproxy.enabled" ]] && haproxy_status="ON" || haproxy_status="off"
+  [[ -f "$INSTALL_DIR/sslh.enabled" ]]    && sslh_status="ON"    || sslh_status="off"
+  [[ -f "$INSTALL_DIR/badvpn.enabled" ]]  && badvpn_status="ON"  || badvpn_status="off"
 
   printf '%s\n' "===================================================="
   echo " SERVICE PORTS"
@@ -86,9 +74,13 @@ port_info() {
   printf "  %-26s %s\n" "Dropbear (internal)" "127.0.0.1:143"
   printf "  %-26s %s\n" "SlowDNS" "UDP 53 -> 5300"
   printf "  %-26s %s\n" "OpenSSH (admin)" "22"
+  printf "  %-26s %s\n" "HAProxy SSH-SSL [$haproxy_status]" "444"
+  printf "  %-26s %s\n" "SSLH multiplex [$sslh_status]" "446"
+  printf "  %-26s %s\n" "BadVPN UDPGW [$badvpn_status]" "127.0.0.1:7300 (tunnel-only)"
   echo ""
   printf "  TLS/WS domain : %s\n" "$domain"
   printf "  SlowDNS NS    : %s\n" "$nsdomain"
+  printf "  SSH engine    : %s\n" "$engine"
   printf '%s\n' "===================================================="
 }
 
@@ -168,7 +160,7 @@ check_running() {
   printf '%s\n' "===================================================="
   echo " RUNNING SERVICES"
   printf '%s\n' "===================================================="
-  systemctl --no-pager --type=service | grep -E 'xray|nginx|dropbear|ws-proxy|slowdns|cron'
+  systemctl --no-pager --type=service | grep -E 'xray|nginx|dropbear|ws-proxy|slowdns|cron|vpn-haproxy|vpn-sslh|vpn-badvpn'
 }
 
 # ---- [07] Restart All Service ----
@@ -181,6 +173,13 @@ restart_all() {
       printf "  %s could not restart\n" "$u"
     fi
   done
+  # optional services — only restart the ones currently enabled
+  [[ -f "$INSTALL_DIR/haproxy.enabled" ]] && systemctl restart vpn-haproxy 2>/dev/null \
+    && printf "  %svpn-haproxy%s restarted\n" "$G" "$X"
+  [[ -f "$INSTALL_DIR/sslh.enabled" ]]    && systemctl restart vpn-sslh 2>/dev/null \
+    && printf "  %svpn-sslh%s restarted\n" "$G" "$X"
+  [[ -f "$INSTALL_DIR/badvpn.enabled" ]]  && systemctl restart vpn-badvpn 2>/dev/null \
+    && printf "  %svpn-badvpn%s restarted\n" "$G" "$X"
 }
 
 # ---- [08] Change Banner ----
@@ -207,6 +206,88 @@ edit_banner() {
   echo "Banner updated and applied to Dropbear."
 }
 
+# ---- [09] Toggle HAProxy (SSH-SSL) ----
+toggle_haproxy() {
+  if [[ -f "$INSTALL_DIR/haproxy.enabled" ]]; then
+    echo "HAProxy (SSH-SSL, port 444): ENABLED"
+  else
+    echo "HAProxy (SSH-SSL, port 444): DISABLED"
+  fi
+  echo ""
+  echo "  [1] Enable"
+  echo "  [2] Disable"
+  echo "  [0] Back"
+  read -rp "Choose: " opt
+  case "$opt" in
+    1) bash "$CORE_DIR/haproxy.sh" enable ;;
+    2) bash "$CORE_DIR/haproxy.sh" disable ;;
+    0) return ;;
+    *) echo "Invalid option." ;;
+  esac
+}
+
+# ---- [10] Toggle SSLH Multiplex ----
+toggle_sslh() {
+  if [[ -f "$INSTALL_DIR/sslh.enabled" ]]; then
+    echo "SSLH multiplex (port 446): ENABLED"
+  else
+    echo "SSLH multiplex (port 446): DISABLED"
+  fi
+  echo ""
+  echo "  [1] Enable"
+  echo "  [2] Disable"
+  echo "  [0] Back"
+  read -rp "Choose: " opt
+  case "$opt" in
+    1) bash "$CORE_DIR/sslh.sh" enable ;;
+    2) bash "$CORE_DIR/sslh.sh" disable ;;
+    0) return ;;
+    *) echo "Invalid option." ;;
+  esac
+}
+
+# ---- [11] SSH Tunnel Engine (Dropbear/OpenSSH/Both) ----
+set_ssh_engine() {
+  local current
+  current="$(cat "$INSTALL_DIR/ssh-engine" 2>/dev/null || echo both)"
+  echo "Current SSH tunnel engine: $current"
+  echo "(controls what ws.py / SlowDNS / HAProxy / SSLH forward tunnel traffic"
+  echo " to — OpenSSH's own admin service on :22 is never stopped by this option)"
+  echo ""
+  echo "  [1] Dropbear only"
+  echo "  [2] OpenSSH only  (stops Dropbear; tunnel traffic hits the same sshd as your admin login)"
+  echo "  [3] Both  (default — Dropbear is the tunnel target, OpenSSH stays untouched)"
+  echo "  [0] Back"
+  read -rp "Choose: " opt
+  case "$opt" in
+    1) bash "$CORE_DIR/ssh-engine.sh" dropbear ;;
+    2) bash "$CORE_DIR/ssh-engine.sh" openssh ;;
+    3) bash "$CORE_DIR/ssh-engine.sh" both ;;
+    0) return ;;
+    *) echo "Invalid option." ;;
+  esac
+}
+
+# ---- [12] Toggle BadVPN (UDPGW) ----
+toggle_badvpn() {
+  if [[ -f "$INSTALL_DIR/badvpn.enabled" ]]; then
+    echo "BadVPN UDPGW (127.0.0.1:7300): ENABLED"
+  else
+    echo "BadVPN UDPGW (127.0.0.1:7300): DISABLED"
+  fi
+  echo ""
+  echo "  [1] Enable"
+  echo "  [2] Disable"
+  echo "  [0] Back"
+  read -rp "Choose: " opt
+  case "$opt" in
+    1) bash "$CORE_DIR/badvpn.sh" enable ;;
+    2) bash "$CORE_DIR/badvpn.sh" disable ;;
+    0) return ;;
+    *) echo "Invalid option." ;;
+  esac
+}
+
 while true; do
   clear
   echo ""
@@ -222,6 +303,10 @@ while true; do
   printf "  ${BL}[06]${X} Check Running Service\n"
   printf "  ${BL}[07]${X} Restart All Service\n"
   printf "  ${BL}[08]${X} Change Banner\n"
+  printf "  ${BL}[09]${X} Toggle HAProxy (SSH-SSL)\n"
+  printf "  ${BL}[10]${X} Toggle SSLH Multiplex\n"
+  printf "  ${BL}[11]${X} SSH Tunnel Engine (Dropbear/OpenSSH/Both)\n"
+  printf "  ${BL}[12]${X} Toggle BadVPN (UDPGW)\n"
   echo ""
   printf "  ${Y}[00]${X} Main Menu\n"
   echo ""
@@ -236,6 +321,10 @@ while true; do
     6|06) check_running ; pause ;;
     7|07) restart_all ; pause ;;
     8|08) edit_banner ; pause ;;
+    9|09) toggle_haproxy ; pause ;;
+    10)   toggle_sslh ; pause ;;
+    11)   set_ssh_engine ; pause ;;
+    12)   toggle_badvpn ; pause ;;
     0|00) exit 0 ;;
     *) echo "Invalid option."; sleep 1 ;;
   esac
