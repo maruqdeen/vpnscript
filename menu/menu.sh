@@ -15,6 +15,7 @@ fi
 
 source "$BASE/lib-ssh-users.sh"
 source "$INSTALL_DIR/core/wireguard.sh"
+source "$INSTALL_DIR/core/bandwidth.sh"
 
 # ---- colors ----
 G=$'\e[32m'; R=$'\e[31m'; Y=$'\e[33m'; C=$'\e[36m'; B=$'\e[1m'; D=$'\e[2m'; X=$'\e[0m'
@@ -99,6 +100,18 @@ draw_header() {
   echo ""
   line "CONTROL MANAGER"
   echo ""
+
+  # --- BANDWITH USAGE ---
+  local bw_iface bw_today_b bw_yesterday_b bw_month_b
+  bw_iface="$(bw_ensure)"
+  read -r bw_today_b bw_yesterday_b < <(bw_day_stats "$bw_iface")
+  bw_month_b="$(bw_month_bytes "$bw_iface")"
+
+  line "BANDWITH USAGE"
+  printf "Bandwidth  Used Today      = %s\n" "$(_bw_human "$bw_today_b")"
+  printf "Bandwidth  Used yesterday  = %s\n" "$(_bw_human "$bw_yesterday_b")"
+  printf "Total Bandwith Used in a Month = %s\n" "$(_bw_human "$bw_month_b")"
+  printf '%s\n' "===================================================="
 }
 
 while true; do
