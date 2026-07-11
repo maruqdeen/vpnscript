@@ -33,7 +33,18 @@ svc() {
   fi
 }
 
-line() { printf '%s\n' "=============== $1 ==============="; }
+# Fixed total width (51, matching the plain bottom divider), title
+# centered — NOT a fixed equals-count on each side, which is what made
+# every section header a different overall length before (title length
+# varied, so the total line length varied right along with it).
+line() {
+  local title="$1" width=51 pad_total left right
+  pad_total=$(( width - ${#title} - 2 ))
+  (( pad_total < 0 )) && pad_total=0
+  left=$(( pad_total / 2 ))
+  right=$(( pad_total - left ))
+  printf '%s %s %s\n' "$(printf '=%.0s' $(seq 1 "$left"))" "$title" "$(printf '=%.0s' $(seq 1 "$right"))"
+}
 
 # count_xray <protocol> -> number of clients configured for that inbound (0 if absent)
 count_xray() {
@@ -121,6 +132,7 @@ while true; do
   bw_month_b="$(bw_month_bytes "$bw_iface")"
 
   line "BANDWITH USAGE"
+  echo ""
   printf "Bandwidth  Used Today      = %s\n" "$(_bw_human "$bw_today_b")"
   printf "Bandwidth  Used yesterday  = %s\n" "$(_bw_human "$bw_yesterday_b")"
   printf "Total Bandwith Used in a Month = %s\n" "$(_bw_human "$bw_month_b")"
