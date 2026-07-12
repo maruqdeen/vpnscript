@@ -1,39 +1,25 @@
 #!/bin/bash
 # VPN-Starter-Kit :: core/bandwidth.sh
-# Bandwidth usage reporting via vnstat (lazy-installed on first use, same
-# pattern as the other optional services in this repo). Source this file
-# for bw_ensure()/bw_day_stats()/bw_month()/_bw_human().
-BW_IFACE_FILE="/etc/vpn-script/bandwidth-iface"
+# Account-attributable bandwidth reporting: sums real per-account usage
+# across SSH, Xray (VMess/VLESS/Trojan), and WireGuard, rather than
+# interface-wide vnstat totals. vnstat counted ALL server traffic (SSH
+# admin access, apt/package installs, background system chatter), so a
+# fresh box with zero VPN accounts still showed dozens of MB "used"
+# before any client had ever connected. Source this file for
+# bw_ssh_bytes()/bw_wireguard_bytes()/bw_xray_bytes()/_bw_human().
+#
+# Each source's counter is a running cumulative total (since account
+# creation for SSH, since the WireGuard tunnel last came up, since Xray's
+# Stats API was enabled) — there's no calendar-day breakdown, unlike the
+# old vnstat-based Today/Yesterday/Month.
 
-# Installs vnstat + registers the primary interface if not already done.
-# Prints the interface name to use for the other bw_* functions.
-bw_ensure() {
-  export DEBIAN_FRONTEND=noninteractive
-  export NEEDRESTART_MODE=a
-  if ! command -v vnstat >/dev/null 2>&1; then
-    apt-get install -y vnstat >/dev/null 2>&1
-    systemctl enable --now vnstat >/dev/null 2>&1
-  fi
-
-  local iface
-  if [[ -f "$BW_IFACE_FILE" ]]; then
-    iface="$(cat "$BW_IFACE_FILE")"
-  else
-    iface="$(ip route show default | awk '{print $5; exit}')"
-    [[ -z "$iface" ]] && iface="eth0"
-    echo "$iface" > "$BW_IFACE_FILE"
-  fi
-
-  # vnstat needs the interface registered in its database before it has
-  # anything to report — harmless no-op if already added.
-  vnstat --add -i "$iface" >/dev/null 2>&1 || true
-
-  echo "$iface"
-}
+SSH_LIMITS_JSON="/etc/vpn-script/ssh-limits.json"
+XRAY_CONFIG="/usr/local/etc/xray/config.json"
+XRAY_API_SERVER="127.0.0.1:10085"
+WG_IFACE="wg0"
 
 # Bytes -> "824.30MB" / "4.12GB" / "1.03TB" style. Byte units use a capital
-# B (GB/MB/TB) — lowercase "b" conventionally means bits, and mislabeling
-# bytes as bits made the numbers look inflated/wrong at a glance.
+# B (GB/MB/TB) — lowercase "b" conventionally means bits.
 _bw_human() {
   local bytes="$1"
   [[ "$bytes" =~ ^[0-9]+$ ]] || bytes=0
@@ -46,34 +32,31 @@ _bw_human() {
   }'
 }
 
-# Prints "today_bytes yesterday_bytes". Matches vnstat's daily records by
-# actual calendar date (not array position [-1]/[-2]) — vnstat's JSON
-# ordering isn't something to assume blindly, and a wrong assumption there
-# would silently swap or misreport the two figures.
-bw_day_stats() {
-  local iface="$1"
-  local ty tm td yy ym yd
-  ty=$(date +%Y); tm=$(date +%-m); td=$(date +%-d)
-  yy=$(date -d yesterday +%Y); ym=$(date -d yesterday +%-m); yd=$(date -d yesterday +%-d)
-  vnstat -i "$iface" --json d 32 2>/dev/null | jq -r \
-    --argjson ty "$ty" --argjson tm "$tm" --argjson td "$td" \
-    --argjson yy "$yy" --argjson ym "$ym" --argjson yd "$yd" '
-    (.interfaces[0].traffic.day // []) as $days |
-    (([$days[] | select(.date.year==$ty and .date.month==$tm and .date.day==$td) | (.rx + .tx)] | add) // 0) as $today |
-    (([$days[] | select(.date.year==$yy and .date.month==$ym and .date.day==$yd) | (.rx + .tx)] | add) // 0) as $yesterday |
-    "\($today) \($yesterday)"
-  ' 2>/dev/null
+# Sum of bw_used_bytes across every tracked SSH/SlowDNS account (0 if the
+# file doesn't exist yet — nothing created, nothing tracked).
+bw_ssh_bytes() {
+  local v
+  v="$(jq '[.[].bw_used_bytes] | add // 0' "$SSH_LIMITS_JSON" 2>/dev/null)"
+  [[ "$v" =~ ^[0-9]+$ ]] && echo "$v" || echo 0
 }
 
-# Total bytes for the current calendar month, matched by year+month rather
-# than assuming the last array entry is the current month.
-bw_month_bytes() {
-  local iface="$1"
-  local my mm
-  my=$(date +%Y); mm=$(date +%-m)
-  vnstat -i "$iface" --json m 12 2>/dev/null | jq -r \
-    --argjson my "$my" --argjson mm "$mm" '
-    (.interfaces[0].traffic.month // []) as $months |
-    (([$months[] | select(.date.year==$my and .date.month==$mm) | (.rx + .tx)] | add) // 0)
-  ' 2>/dev/null
+# Sum of rx+tx across every WireGuard peer, straight from the kernel via
+# `wg show <iface> dump` — native counters, no extra instrumentation needed.
+bw_wireguard_bytes() {
+  local v
+  command -v wg >/dev/null 2>&1 || { echo 0; return; }
+  v="$(wg show "$WG_IFACE" dump 2>/dev/null | tail -n +2 | awk -F'\t' '{rx+=$6; tx+=$7} END{print (rx+tx)+0}')"
+  [[ "$v" =~ ^[0-9]+$ ]] && echo "$v" || echo 0
+}
+
+# Sum of uplink+downlink across every VMess/VLESS/Trojan client via Xray's
+# Stats API. Returns 0 (not an error) if the API isn't enabled yet — see
+# install/migrate-xray-stats-api.sh.
+bw_xray_bytes() {
+  local v
+  command -v xray >/dev/null 2>&1 || { echo 0; return; }
+  jq -e '.api.services // [] | index("StatsService")' "$XRAY_CONFIG" >/dev/null 2>&1 || { echo 0; return; }
+  v="$(xray api statsquery --server="$XRAY_API_SERVER" -pattern "user>>>" 2>/dev/null \
+    | jq '[.stat[]?.value | tonumber] | add // 0' 2>/dev/null)"
+  [[ "$v" =~ ^[0-9]+$ ]] && echo "$v" || echo 0
 }
