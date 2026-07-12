@@ -48,7 +48,10 @@ line() {
 
 # count_xray <protocol> -> number of clients configured for that inbound (0 if absent)
 count_xray() {
-  jq -r --arg p "$1" '[.inbounds[]? | select(.protocol==$p) | .settings.clients[]?] | length' \
+  # vmess/vless/trojan each have a WS + gRPC inbound sharing one client
+  # list, so counting raw clients across .inbounds[] double-counts every
+  # account; dedupe by email first.
+  jq -r --arg p "$1" '[.inbounds[]? | select(.protocol==$p) | .settings.clients[]?.email] | unique | length' \
     "$XRAY_CONFIG" 2>/dev/null || echo 0
 }
 

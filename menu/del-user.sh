@@ -22,8 +22,10 @@ delete_xray() {
   # list current users on this protocol (strip the _date suffix for display)
   echo ""
   echo "Current $proto users:"
+  # dedupe: WS + gRPC inbounds share one client list, so without unique
+  # every account would be listed (and later matched) twice.
   mapfile -t USERS < <(jq -r --arg p "$proto" '
-    .inbounds[] | select(.protocol==$p) | .settings.clients[].email
+    [.inbounds[] | select(.protocol==$p) | .settings.clients[].email] | unique[]
   ' "$CONFIG" 2>/dev/null)
 
   if [[ ${#USERS[@]} -eq 0 ]]; then
