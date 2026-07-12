@@ -51,10 +51,28 @@ if [[ ! -s "$PKI_DIR/pki/issued/server.crt" ]]; then
   EASYRSA_BATCH=1 ./easyrsa build-ca nopass >/dev/null
   EASYRSA_BATCH=1 ./easyrsa build-server-full server nopass >/dev/null
   EASYRSA_BATCH=1 ./easyrsa build-client-full client nopass >/dev/null
-  openvpn --genkey secret "$PKI_DIR/pki/ta.key"
   echo ">>> Generating DH parameters (can take a couple of minutes)..."
   ./easyrsa gen-dh >/dev/null
   cd - >/dev/null || exit 1
+fi
+
+# tls-crypt static key -- kept as its own guard (not folded into the block
+# above) so a box that's missing only this file self-heals without
+# rebuilding the whole PKI/CA/DH. OpenVPN's CLI syntax for this changed
+# between versions: 2.4.x (Ubuntu 20.04) needs --genkey --secret <file>;
+# 2.5+ (22.04/24.04) uses --genkey secret <file> (key type became its own
+# positional arg). Try the newer form first and fall back on the older one
+# instead of pinning an exact version cutoff.
+if [[ ! -s "$PKI_DIR/pki/ta.key" ]]; then
+  openvpn --genkey secret "$PKI_DIR/pki/ta.key" >/dev/null 2>&1
+  if [[ ! -s "$PKI_DIR/pki/ta.key" ]]; then
+    openvpn --genkey --secret "$PKI_DIR/pki/ta.key" >/dev/null 2>&1
+  fi
+  if [[ ! -s "$PKI_DIR/pki/ta.key" ]]; then
+    echo "ERROR: could not generate OpenVPN static key (ta.key) with either CLI syntax."
+    echo "  Check your openvpn version:  openvpn --version"
+    exit 1
+  fi
 fi
 
 # ---- 2. Per-listener server configs ----
