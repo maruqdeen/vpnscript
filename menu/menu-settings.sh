@@ -73,6 +73,7 @@ port_info() {
   printf "  %-26s %s\n" "Xray VLESS (path /vless)" "80, 8080, 443(tls)"
   printf "  %-26s %s\n" "Xray VMess (path /vmess)" "80, 8080, 443(tls)"
   printf "  %-26s %s\n" "SSH-WS (path /)" "80, 8080, 8880, 443(tls)"
+  printf "  %-26s %s\n" "SSH-OHP" "8181"
   printf "  %-26s %s\n" "Dropbear (internal)" "127.0.0.1:143"
   printf "  %-26s %s\n" "SlowDNS" "UDP 53 -> 5300"
   printf "  %-26s %s\n" "OpenSSH (admin)" "22"
@@ -167,13 +168,13 @@ check_running() {
   printf '%s\n' "===================================================="
   echo " RUNNING SERVICES"
   printf '%s\n' "===================================================="
-  systemctl --no-pager --type=service | grep -E 'xray|nginx|dropbear|ws-proxy|slowdns|cron|vpn-haproxy|vpn-sslh|vpn-badvpn|openvpn|squid|danted'
+  systemctl --no-pager --type=service | grep -E 'xray|nginx|dropbear|ws-proxy|ohp-proxy|slowdns|cron|vpn-haproxy|vpn-sslh|vpn-badvpn|openvpn|squid|danted'
 }
 
 # ---- [07] Restart All Service ----
 restart_all() {
   echo ">>> Restarting all services..."
-  for u in xray nginx dropbear ws-proxy slowdns; do
+  for u in xray nginx dropbear ws-proxy ohp-proxy slowdns; do
     if systemctl restart "$u" 2>/dev/null; then
       printf "  %s%s%s restarted\n" "$G" "$u" "$X"
     else

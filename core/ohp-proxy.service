@@ -1,0 +1,13 @@
+[Unit]
+Description=SSH-over-HTTP-Proxy (OHP) Tunnel (VPN-Starter-Kit)
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /etc/vpn-script/core/ohp.py
+Restart=always
+RestartSec=3
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

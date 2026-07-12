@@ -74,6 +74,7 @@ chmod +x "$INSTALL_DIR/menu/"*.sh "$INSTALL_DIR/core/"*.py "$INSTALL_DIR/core/"*
 # ([[ ! -s ]] catches both "missing" and "0 bytes" — the failure that
 #  produced a broken SSH-WS on earlier installs.)
 for f in "$INSTALL_DIR/core/ws.py" \
+         "$INSTALL_DIR/core/ohp.py" \
          "$INSTALL_DIR/menu/menu.sh" \
          "$INSTALL_DIR/menu/add-user.sh" \
          "$INSTALL_DIR/menu/add-ssh-user.sh" \
@@ -144,6 +145,23 @@ LimitNOFILE=65535
 WantedBy=multi-user.target
 EOF
 
+# SSH-over-HTTP-Proxy (OHP) — same "write inline" reasoning as ws-proxy above.
+cat > /etc/systemd/system/ohp-proxy.service <<'EOF'
+[Unit]
+Description=SSH-over-HTTP-Proxy (OHP) Tunnel (VPN-Starter-Kit)
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /etc/vpn-script/core/ohp.py
+Restart=always
+RestartSec=3
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
 # ============================================================
 echo ">>> [7/10] SlowDNS (needs your NS domain)"
 # ============================================================
@@ -176,8 +194,8 @@ echo ">>> [8/10] Enable + start all services"
 # ============================================================
 systemctl daemon-reload
 # guard against a stale mask from any earlier partial run
-systemctl unmask ws-proxy 2>/dev/null || true
-systemctl enable --now xray nginx dropbear ws-proxy >/dev/null 2>&1 || true
+systemctl unmask ws-proxy ohp-proxy 2>/dev/null || true
+systemctl enable --now xray nginx dropbear ws-proxy ohp-proxy >/dev/null 2>&1 || true
 if [[ "$NS_DOMAIN" != "CHANGE_ME" ]]; then
   systemctl enable --now slowdns >/dev/null 2>&1 || true
 else
@@ -185,11 +203,15 @@ else
   echo "  slowdns installed but NOT started (set NS domain, then: systemctl start slowdns)"
 fi
 
-# --- verify SSH-WS actually came up (fail loudly if not) ---
+# --- verify SSH-WS / SSH-OHP actually came up (fail loudly if not) ---
 sleep 1
 if ! systemctl is-active --quiet ws-proxy; then
   echo ""
   echo "WARNING: ws-proxy did not start. Check:  journalctl -u ws-proxy -n 20 --no-pager"
+fi
+if ! systemctl is-active --quiet ohp-proxy; then
+  echo ""
+  echo "WARNING: ohp-proxy did not start. Check:  journalctl -u ohp-proxy -n 20 --no-pager"
 fi
 
 # ============================================================
