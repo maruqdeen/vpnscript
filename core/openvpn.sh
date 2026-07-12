@@ -156,12 +156,29 @@ fi
 
 # ---- 6. Enable + start all 3 listeners ----
 systemctl daemon-reload
-systemctl enable --now "${UNITS[@]}"
-touch "$FLAG"
+systemctl enable --now "${UNITS[@]}" >/dev/null 2>&1 || true
 
-echo "OpenVPN ENABLED."
-echo "  TCP : ${SERVER_HOST}:1194"
-echo "  UDP : ${SERVER_HOST}:1194 (falls back to :443 udp)"
-echo "  Download portal:"
-echo "    http://${SERVER_HOST}:85/ovpn/client-tcp.ovpn"
-echo "    http://${SERVER_HOST}:81/ovpn/client-udp.ovpn"
+# enable --now not failing the script doesn't mean the units actually
+# came up -- verify each one before claiming success, instead of
+# touching the enabled-flag and printing ENABLED regardless.
+sleep 1
+FAILED=()
+for u in "${UNITS[@]}"; do
+  systemctl is-active --quiet "$u" || FAILED+=("$u")
+done
+
+if [[ ${#FAILED[@]} -eq 0 ]]; then
+  touch "$FLAG"
+  echo "OpenVPN ENABLED."
+  echo "  TCP : ${SERVER_HOST}:1194"
+  echo "  UDP : ${SERVER_HOST}:1194 (falls back to :443 udp)"
+  echo "  Download portal:"
+  echo "    http://${SERVER_HOST}:85/ovpn/client-tcp.ovpn"
+  echo "    http://${SERVER_HOST}:81/ovpn/client-udp.ovpn"
+else
+  echo "ERROR: the following listener(s) failed to start: ${FAILED[*]}"
+  for u in "${FAILED[@]}"; do
+    echo "  Check:  journalctl -u $u -n 30 --no-pager"
+  done
+  exit 1
+fi
