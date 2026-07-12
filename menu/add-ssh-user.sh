@@ -44,7 +44,7 @@ read -rp "Enter Username         : " USERNAME
 read -rp "Enter Password         : " PASSWORD
 read -rp "Expiry (days)          : " DAYS
 read -rp "Connection limit (blank = unlimited): " CONN_LIMIT
-read -rp "Bandwidth limit MB (blank = unlimited): " BW_LIMIT_MB
+read -rp "Bandwidth limit GB (blank = unlimited): " BW_LIMIT_GB
 
 if [[ -z "$USERNAME" ]]; then echo "Username cannot be empty."; exit 1; fi
 if ! [[ "$USERNAME" =~ ^[a-z_][a-z0-9_-]*$ ]]; then
@@ -55,11 +55,12 @@ if ! [[ "$DAYS" =~ ^[0-9]+$ ]]; then echo "Expiry must be a number of days."; ex
 if [[ -n "$CONN_LIMIT" ]] && ! [[ "$CONN_LIMIT" =~ ^[0-9]+$ ]]; then
   echo "Connection limit must be a number (or blank for unlimited)."; exit 1
 fi
-if [[ -n "$BW_LIMIT_MB" ]] && ! [[ "$BW_LIMIT_MB" =~ ^[0-9]+$ ]]; then
-  echo "Bandwidth limit must be a number of MB (or blank for unlimited)."; exit 1
+if [[ -n "$BW_LIMIT_GB" ]] && ! [[ "$BW_LIMIT_GB" =~ ^[0-9]+$ ]]; then
+  echo "Bandwidth limit must be a number of GB (or blank for unlimited)."; exit 1
 fi
 CONN_LIMIT="${CONN_LIMIT:-0}"
-BW_LIMIT_MB="${BW_LIMIT_MB:-0}"
+BW_LIMIT_GB="${BW_LIMIT_GB:-0}"
+BW_LIMIT_MB=$(( BW_LIMIT_GB * 1024 ))
 if id "$USERNAME" >/dev/null 2>&1; then
   echo "Error: system user '$USERNAME' already exists."; exit 1
 fi
@@ -73,7 +74,7 @@ echo "${USERNAME}:${PASSWORD}" | chpasswd
 ssh_limits_set "$USERNAME" "$CONN_LIMIT" "$BW_LIMIT_MB"
 
 CONN_LIMIT_DISPLAY="Unlimited"; [[ "$CONN_LIMIT" -gt 0 ]] && CONN_LIMIT_DISPLAY="$CONN_LIMIT"
-BW_LIMIT_DISPLAY="Unlimited"; [[ "$BW_LIMIT_MB" -gt 0 ]] && BW_LIMIT_DISPLAY="${BW_LIMIT_MB}MB"
+BW_LIMIT_DISPLAY="Unlimited"; [[ "$BW_LIMIT_GB" -gt 0 ]] && BW_LIMIT_DISPLAY="${BW_LIMIT_GB}GB"
 
 # ---- print the card ----
 cat <<CARD
