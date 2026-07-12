@@ -209,6 +209,11 @@ bash "$INSTALL_DIR/core/openvpn.sh" enable \
   || echo "WARNING: OpenVPN did not enable cleanly — retry via: menu > Settings > Toggle OpenVPN"
 bash "$INSTALL_DIR/core/proxy.sh" enable \
   || echo "WARNING: HTTP/SOCKS5 proxy did not enable cleanly — retry via: menu > Settings > Toggle HTTP & SOCKS Proxy"
+# Clean Expired User ships enabled by default (unlike fail2ban/anti-
+# torrent/DDoS protection under Security Mgt, which stay off until an
+# admin opts in); an expired account otherwise just lingers forever.
+bash "$INSTALL_DIR/core/clean-expired.sh" enable \
+  || echo "WARNING: Clean Expired User did not enable cleanly — retry via: menu > Security Mgt > Clean All Expired User"
 
 # ============================================================
 echo ">>> [10/10] Global 'menu' command"

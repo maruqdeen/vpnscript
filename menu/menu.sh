@@ -153,8 +153,8 @@ while true; do
     5)  bash "$BASE/menu-wireguard.sh" ;;
     6)  bash "$BASE/menu-settings.sh" ;;
     7)  systemctl --no-pager --type=service | grep -E 'xray|nginx|dropbear|ws-proxy|slowdns' ; pause ;;
-    8)  echo "Bot & Api Setup — not built yet." ; pause ;;
-    9)  echo "Security Mgt — not built yet." ; pause ;;
+    8)  bash "$BASE/menu-bot-api.sh" ;;
+    9)  bash "$BASE/menu-security.sh" ;;
     10) echo "WebMin — not built yet." ; pause ;;
     0)  clear; exit 0 ;;
     *)  echo "Invalid option."; sleep 1 ;;
