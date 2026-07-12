@@ -58,7 +58,7 @@ while true; do
         trojan) bash "$BASE/trial-trojan-user.sh" ;;
       esac
       pause ;;
-    5|05) echo "Check active user — not built yet."; pause ;;
+    5|05) bash "$BASE/check-xray-user.sh" "$PROTO" ; pause ;;
 
     0|00) exit 0 ;;
     *) echo "Invalid option."; sleep 1 ;;

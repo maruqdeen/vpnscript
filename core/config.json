@@ -4,6 +4,18 @@
     "access": "/var/log/vpn-script/xray-access.log",
     "error": "/var/log/vpn-script/xray-error.log"
   },
+  "api": {
+    "tag": "api",
+    "listen": "127.0.0.1:10085",
+    "services": ["HandlerService", "LoggerService", "StatsService"]
+  },
+  "stats": {},
+  "policy": {
+    "levels": {
+      "0": { "statsUserUplink": true, "statsUserDownlink": true }
+    },
+    "system": { "statsInboundUplink": true, "statsInboundDownlink": true }
+  },
   "inbounds": [
     {
       "tag": "vless-ws",
