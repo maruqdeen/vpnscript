@@ -129,19 +129,17 @@ while true; do
   printf "  ${B}[0]${X} Exit\n"
   echo ""
 
-  # --- BANDWITH USAGE (per-account totals: SSH + Xray + WireGuard, not
+  # --- BANDWITH USAGE (account totals: SSH + Xray + WireGuard, not
   # whole-interface traffic — so a box with zero accounts shows 0) ---
-  bw_ssh_b="$(bw_ssh_bytes)"
-  bw_xray_b="$(bw_xray_bytes)"
-  bw_wg_b="$(bw_wireguard_bytes)"
-  bw_total_b=$(( bw_ssh_b + bw_xray_b + bw_wg_b ))
+  bw_ensure
+  read -r bw_today_b bw_yesterday_b < <(bw_day_stats)
+  bw_month_b="$(bw_month_bytes)"
 
   line "BANDWITH USAGE"
   echo ""
-  printf "SSH Bandwidth Used       = %s\n" "$(_bw_human "$bw_ssh_b")"
-  printf "Xray Bandwidth Used      = %s\n" "$(_bw_human "$bw_xray_b")"
-  printf "Wireguard Bandwidth Used = %s\n" "$(_bw_human "$bw_wg_b")"
-  printf "Total Bandwith Used      = %s\n" "$(_bw_human "$bw_total_b")"
+  printf "Bandwidth  Used Today      = %s\n" "$(_bw_human "$bw_today_b")"
+  printf "Bandwidth  Used yesterday  = %s\n" "$(_bw_human "$bw_yesterday_b")"
+  printf "Total Bandwith Used in a Month = %s\n" "$(_bw_human "$bw_month_b")"
   echo ""
 
   printf '%s\n' "==================================================="
