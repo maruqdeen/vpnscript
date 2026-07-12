@@ -88,7 +88,11 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=${SSLH_BIN} --foreground --config ${CFG}
+# This build's flags are short-form only (confirmed via `sslh --help` on a
+# live Ubuntu 22.04 box: 1.20-1+deb11u1build0.22.04.1) -- no --foreground,
+# no --config. -F takes the path glued directly on, no space, or sslh
+# silently falls back to its own default search paths and fails to start.
+ExecStart=${SSLH_BIN} -f -F${CFG}
 Restart=always
 RestartSec=3
 
