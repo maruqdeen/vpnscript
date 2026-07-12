@@ -1,16 +1,21 @@
 #!/bin/bash
 # VPN-Starter-Kit :: menu/check-xray-user.sh
-# Shows every Xray user for a given protocol (vmess/vless/trojan) with
-# whether they're actively transferring data right now. Xray has no
-# "logged in" concept like SSH — active detection uses the Stats API,
-# sampling each user's uplink+downlink counters twice a few seconds apart;
-# a nonzero delta means bytes moved during the sample window. Best-effort,
-# same class of approximation as the SSH bandwidth-limit /proc/io sampling.
+# Shows every Xray user for a given protocol (vmess/vless/trojan) with a
+# session count. Xray has no per-connection OS process to count (unlike
+# SSH's Dropbear PIDs), and its WS/gRPC inbounds sit behind nginx on
+# loopback, so the source IP in Xray's own access log is always
+# 127.0.0.1 (nginx) — counting distinct client IPs, the SSH approach,
+# doesn't work here. Instead this counts "accepted" access-log lines
+# carrying that user's email tag within the last 60s (matches nginx's
+# WS idle timeout): each open WS/gRPC stream logs its own accepted line,
+# so this approximates concurrent sessions. Best-effort, not a verified
+# distinct-device count.
 # Usage: check-xray-user.sh <vmess|vless|trojan>
 set -uo pipefail
 
 CONFIG="/usr/local/etc/xray/config.json"
-API_SERVER="127.0.0.1:10085"
+ACCESS_LOG="/var/log/vpn-script/xray-access.log"
+WINDOW_SECONDS=60
 PROTO="${1:-}"
 
 if [[ $EUID -ne 0 ]]; then
@@ -26,20 +31,10 @@ if [[ ! -f "$CONFIG" ]]; then
   exit 1
 fi
 
-if ! command -v xray >/dev/null 2>&1; then
-  echo "Error: xray binary not found on PATH."
-  exit 1
-fi
-
-if ! jq -e '.api.services // [] | index("StatsService")' "$CONFIG" >/dev/null 2>&1; then
-  echo "Stats API is not enabled on this server yet."
-  echo "Run this once, then try again:"
-  echo "  wget -qO- https://raw.githubusercontent.com/maruqdeen/vpnscript/main/install/migrate-xray-stats-api.sh | sudo bash"
-  exit 1
-fi
-
+# de-duped: vmess/vless/trojan each have a WS + gRPC inbound sharing the
+# same client list, so without unique the same email is listed twice.
 mapfile -t USERS < <(jq -r --arg p "$PROTO" '
-  .inbounds[] | select(.protocol==$p) | .settings.clients[].email
+  [.inbounds[] | select(.protocol==$p) | .settings.clients[].email] | unique[]
 ' "$CONFIG" 2>/dev/null)
 
 clear
@@ -56,55 +51,35 @@ if [[ ${#USERS[@]} -eq 0 ]]; then
   exit 0
 fi
 
-_stats_raw() {
-  xray api statsquery --server="$API_SERVER" -pattern "user>>>" 2>/dev/null
-}
+printf "%-28s %s\n" "USERNAME" "SESSIONS"
+echo ""
 
-RAW1="$(_stats_raw)"
-if ! jq -e . >/dev/null 2>&1 <<< "$RAW1"; then
-  echo "Could not query the Xray Stats API — is xray running?"
-  echo "  systemctl status xray"
-  exit 1
+if [[ ! -f "$ACCESS_LOG" ]]; then
+  for email in "${USERS[@]}"; do
+    printf "%-28s %s\n" "${email%%_*}" "0"
+  done
+  echo ""
+  echo "(access log not found at $ACCESS_LOG — counts unavailable)"
+  printf '%s\n' "=================================================="
+  exit 0
 fi
 
-echo "Sampling live traffic (takes a few seconds)..."
-sleep 3
-RAW2="$(_stats_raw)"
+# Xray's access log timestamps are "YYYY/MM/DD HH:MM:SS ..." — same
+# ordering as a plain string, so a string cutoff compare is enough and
+# avoids forking `date` per log line.
+CUTOFF_STR="$(date -d "@$(( $(date +%s) - WINDOW_SECONDS ))" +"%Y/%m/%d %H:%M:%S")"
 
-declare -A BEFORE AFTER
-while read -r name value; do
-  [[ -z "$name" ]] && continue
-  BEFORE["$name"]="$value"
-done < <(jq -r '.stat[]? | "\(.name) \(.value)"' <<< "$RAW1")
-while read -r name value; do
-  [[ -z "$name" ]] && continue
-  AFTER["$name"]="$value"
-done < <(jq -r '.stat[]? | "\(.name) \(.value)"' <<< "$RAW2")
-
-echo ""
-printf "%-28s %s\n" "USERNAME" "STATUS"
-echo ""
-
-ACTIVE_COUNT=0
 for email in "${USERS[@]}"; do
   uname="${email%%_*}"
-  up_key="user>>>${email}>>>traffic>>>uplink"
-  down_key="user>>>${email}>>>traffic>>>downlink"
-  up_before="${BEFORE[$up_key]:-0}"; up_after="${AFTER[$up_key]:-0}"
-  down_before="${BEFORE[$down_key]:-0}"; down_after="${AFTER[$down_key]:-0}"
-  [[ "$up_before" =~ ^[0-9]+$ ]] || up_before=0
-  [[ "$up_after" =~ ^[0-9]+$ ]] || up_after=0
-  [[ "$down_before" =~ ^[0-9]+$ ]] || down_before=0
-  [[ "$down_after" =~ ^[0-9]+$ ]] || down_after=0
-  delta=$(( (up_after - up_before) + (down_after - down_before) ))
-  status="Inactive"
-  if (( delta > 0 )); then
-    status=$'\e[32mActive\e[0m'
-    (( ACTIVE_COUNT++ ))
-  fi
-  printf "%-28s %s\n" "$uname" "$status"
+  count=$(awk -v needle="email: ${email}" -v cutoff="$CUTOFF_STR" '
+    index($0, needle) {
+      ts = $1" "$2
+      if (ts >= cutoff) n++
+    }
+    END { print n+0 }
+  ' "$ACCESS_LOG")
+  printf "%-28s %s\n" "$uname" "$count"
 done
 
 echo ""
-echo "Active now: ${ACTIVE_COUNT} / ${#USERS[@]}"
 printf '%s\n' "=================================================="
