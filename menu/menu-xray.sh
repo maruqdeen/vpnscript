@@ -40,7 +40,7 @@ while true; do
   printf "  ${BL}[02]${X} Create XRAY ${PROTO_DISPLAY} Trial Acc\n"
   printf "  ${BL}[03]${X} Extending XRAY ${PROTO_DISPLAY} User Acc\n"
   printf "  ${BL}[04]${X} Delete XRAY ${PROTO_DISPLAY} WS User Acc\n"
-  printf "  ${BL}[05]${X} Check Active User uning XRAY ${PROTO_DISPLAY}\n"
+  printf "  ${BL}[05]${X} Check Active User using XRAY ${PROTO_DISPLAY}\n"
   echo ""
   printf "  ${Y}[00]${X} Main Menu\n"
   echo ""
