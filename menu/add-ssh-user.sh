@@ -8,6 +8,9 @@ if [[ $EUID -ne 0 ]]; then
   echo "Run as root."; exit 1
 fi
 
+BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../core" && pwd)"
+source "$BASE_DIR/ssh-limits.sh"
+
 # ---- sources for the card ----
 DOMAIN_FILE="/etc/vpn-script/domain"          # saved once at install
 SLOWDNS_DIR="/etc/vpn-script/slowdns"
@@ -37,9 +40,11 @@ else
 fi
 
 # ---- gather input ----
-read -rp "Enter Username : " USERNAME
-read -rp "Enter Password : " PASSWORD
-read -rp "Expiry (days)  : " DAYS
+read -rp "Enter Username         : " USERNAME
+read -rp "Enter Password         : " PASSWORD
+read -rp "Expiry (days)          : " DAYS
+read -rp "Connection limit (blank = unlimited): " CONN_LIMIT
+read -rp "Bandwidth limit MB (blank = unlimited): " BW_LIMIT_MB
 
 if [[ -z "$USERNAME" ]]; then echo "Username cannot be empty."; exit 1; fi
 if ! [[ "$USERNAME" =~ ^[a-z_][a-z0-9_-]*$ ]]; then
@@ -47,6 +52,14 @@ if ! [[ "$USERNAME" =~ ^[a-z_][a-z0-9_-]*$ ]]; then
 fi
 if [[ -z "$PASSWORD" ]]; then echo "Password cannot be empty."; exit 1; fi
 if ! [[ "$DAYS" =~ ^[0-9]+$ ]]; then echo "Expiry must be a number of days."; exit 1; fi
+if [[ -n "$CONN_LIMIT" ]] && ! [[ "$CONN_LIMIT" =~ ^[0-9]+$ ]]; then
+  echo "Connection limit must be a number (or blank for unlimited)."; exit 1
+fi
+if [[ -n "$BW_LIMIT_MB" ]] && ! [[ "$BW_LIMIT_MB" =~ ^[0-9]+$ ]]; then
+  echo "Bandwidth limit must be a number of MB (or blank for unlimited)."; exit 1
+fi
+CONN_LIMIT="${CONN_LIMIT:-0}"
+BW_LIMIT_MB="${BW_LIMIT_MB:-0}"
 if id "$USERNAME" >/dev/null 2>&1; then
   echo "Error: system user '$USERNAME' already exists."; exit 1
 fi
@@ -57,6 +70,10 @@ EXPIRY_CARD=$(date -d "+${DAYS} days" +%d/%m/%y)
 # ---- create the account ----
 useradd -M -s /bin/false -e "$EXPIRY_ISO" "$USERNAME"
 echo "${USERNAME}:${PASSWORD}" | chpasswd
+ssh_limits_set "$USERNAME" "$CONN_LIMIT" "$BW_LIMIT_MB"
+
+CONN_LIMIT_DISPLAY="Unlimited"; [[ "$CONN_LIMIT" -gt 0 ]] && CONN_LIMIT_DISPLAY="$CONN_LIMIT"
+BW_LIMIT_DISPLAY="Unlimited"; [[ "$BW_LIMIT_MB" -gt 0 ]] && BW_LIMIT_DISPLAY="${BW_LIMIT_MB}MB"
 
 # ---- print the card ----
 cat <<CARD
@@ -67,6 +84,8 @@ cat <<CARD
   - Password   : ${PASSWORD}
   - IP         : ${SERVER_IP}
   - Expiration : ${EXPIRY_CARD}
+  - Conn Limit : ${CONN_LIMIT_DISPLAY}
+  - BW Limit   : ${BW_LIMIT_DISPLAY}
 ================================
 SSH (WS|SSL)
   - Hostname  : ${HOSTNAME_VAL}

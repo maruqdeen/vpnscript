@@ -13,6 +13,7 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 source "$BASE/lib-ssh-users.sh"
+source "$BASE/../core/ssh-limits.sh"
 
 delete_xray() {
   local proto="$1"
@@ -71,6 +72,7 @@ delete_ssh() {
   # kill any live sessions, then remove the account
   pkill -u "$NAME" 2>/dev/null || true
   userdel "$NAME"
+  ssh_limits_remove "$NAME"
   echo "Deleted SSH/SlowDNS user '$NAME'."
 }
 

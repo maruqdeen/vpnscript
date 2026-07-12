@@ -13,6 +13,7 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 source "$BASE/lib-ssh-users.sh"
+source "$BASE/../core/ssh-limits.sh"
 
 renew_xray() {
   local proto="$1"
@@ -75,6 +76,10 @@ renew_ssh() {
   local new_exp
   new_exp=$(date -d "+${DAYS} days" +%Y-%m-%d)
   chage -E "$new_exp" "$NAME"
+  # Renewal = fresh cycle: clears any lock from an exceeded connection/
+  # bandwidth limit and zeroes their accumulated usage. No-op if this
+  # user never had a limit set.
+  ssh_limits_reset_usage "$NAME"
   echo "Renewed SSH/SlowDNS user '$NAME' -> expires $new_exp."
 }
 

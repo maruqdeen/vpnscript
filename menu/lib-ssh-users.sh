@@ -114,7 +114,29 @@ ssh_user_login_count() {
   fi
 }
 
+# "conn:N" / "bw:NMB" (space-joined) or "-" if this user has no limits
+# configured (or both are unlimited). Reads core/ssh-limits.sh's store
+# directly rather than sourcing that file — this is read-only display,
+# not mutation, so no need to pull in the write-side helpers here.
+ssh_user_limits_display() {
+  local user="$1" limits_json="/etc/vpn-script/ssh-limits.json" out
+  [[ -f "$limits_json" ]] || { echo "-"; return; }
+  out="$(jq -r --arg u "$user" '
+    .[] | select(.username==$u) |
+    ( [ (if .conn_limit>0 then "conn:\(.conn_limit)" else empty end),
+        (if .bw_limit_mb>0 then "bw:\(.bw_limit_mb)MB" else empty end) ]
+      | join(" ") )
+  ' "$limits_json" 2>/dev/null)"
+  [[ -z "$out" ]] && out="-"
+  echo "$out"
+}
+
 # Render the "MEMBER SSH" table (title + rows + account count).
+# LIMITS column sits before STATUS on purpose: STATUS is color-coded, and
+# padding an already-color-wrapped string to a fixed width miscounts the
+# invisible ANSI escape bytes and misaligns the column (hit this exact bug
+# building the WireGuard active-check screen) — keeping it last, unpadded,
+# sidesteps the problem entirely instead of needing a plain/colored split.
 print_ssh_table() {
   local users count=0
   users="$(ssh_user_list)"
@@ -123,7 +145,7 @@ print_ssh_table() {
   printf "%20s\n" "MEMBER SSH"
   printf '%s\n' "=================================================="
   echo ""
-  printf "%-18s %-16s %s\n" "USERNAME" "EXP DATE" "STATUS"
+  printf "%-18s %-16s %-18s %s\n" "USERNAME" "EXP DATE" "LIMITS" "STATUS"
   echo ""
 
   if [[ -z "$users" ]]; then
@@ -131,10 +153,11 @@ print_ssh_table() {
   else
     while read -r u; do
       [[ -z "$u" ]] && continue
-      local exp status
+      local exp status limits
       exp="$(ssh_user_expiry "$u")"
       status="$(ssh_user_status "$u" "$exp")"
-      printf "%-18s %-16s %b\n" "$u" "$exp" "$status"
+      limits="$(ssh_user_limits_display "$u")"
+      printf "%-18s %-16s %-18s %b\n" "$u" "$exp" "$limits" "$status"
       count=$((count + 1))
     done <<< "$users"
   fi
