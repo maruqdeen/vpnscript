@@ -21,6 +21,7 @@ set -uo pipefail
 INSTALL_DIR="/etc/vpn-script"
 source "$INSTALL_DIR/menu/lib-ssh-users.sh"
 source "$INSTALL_DIR/core/ssh-limits.sh"
+source "$INSTALL_DIR/core/lock-reasons.sh"
 
 ssh_limits_ensure_files
 
@@ -28,13 +29,16 @@ ssh_limits_ensure_files
 COUNT=$(jq 'length' "$SSH_LIMITS_JSON" 2>/dev/null || echo 0)
 [[ "$COUNT" -gt 0 ]] || exit 0
 
+# reason_code feeds menu/check-locked-users.sh so it can show a
+# reason-appropriate recovery action instead of a generic unlock.
 lock_if_unlocked() {
-  local uname="$1" reason="$2"
+  local uname="$1" log_msg="$2" reason_code="$3"
   local pstate
   pstate="$(passwd -S "$uname" 2>/dev/null | awk '{print $2}')"
   if [[ "$pstate" != "L" ]]; then
-    echo "$(date '+%F %T') $uname $reason -> locking"
+    echo "$(date '+%F %T') $uname $log_msg -> locking"
     passwd -l "$uname" >/dev/null 2>&1 || true
+    lock_reason_set "$uname" "$reason_code"
   fi
   pkill -u "$uname" 2>/dev/null || true
 }
@@ -44,7 +48,7 @@ while IFS=$'\t' read -r uname limit; do
   [[ -z "$uname" ]] && continue
   count="$(ssh_user_login_count "$uname")"
   if [[ "$count" -gt "$limit" ]]; then
-    lock_if_unlocked "$uname" "exceeded connection limit ($count/$limit)"
+    lock_if_unlocked "$uname" "exceeded connection limit ($count/$limit)" "connection"
   fi
 done < <(jq -r '.[] | select(.conn_limit > 0) | [.username, .conn_limit] | @tsv' "$SSH_LIMITS_JSON")
 
@@ -95,6 +99,6 @@ while IFS=$'\t' read -r uname limit_mb used_bytes; do
   [[ -z "$uname" ]] && continue
   used_mb=$(( used_bytes / 1048576 ))
   if [[ "$used_mb" -gt "$limit_mb" ]]; then
-    lock_if_unlocked "$uname" "exceeded bandwidth limit (${used_mb}MB/${limit_mb}MB)"
+    lock_if_unlocked "$uname" "exceeded bandwidth limit (${used_mb}MB/${limit_mb}MB)" "bandwidth"
   fi
 done < <(jq -r '.[] | select(.bw_limit_mb > 0) | [.username, .bw_limit_mb, .bw_used_bytes] | @tsv' "$SSH_LIMITS_JSON")

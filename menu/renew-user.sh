@@ -14,6 +14,7 @@ fi
 
 source "$BASE/lib-ssh-users.sh"
 source "$BASE/../core/ssh-limits.sh"
+source "$BASE/../core/lock-reasons.sh"
 
 renew_xray() {
   local proto="$1"
@@ -80,6 +81,7 @@ renew_ssh() {
   # bandwidth limit and zeroes their accumulated usage. No-op if this
   # user never had a limit set.
   ssh_limits_reset_usage "$NAME"
+  lock_reason_clear "$NAME"
   echo "Renewed SSH/SlowDNS user '$NAME' -> expires $new_exp."
 }
 

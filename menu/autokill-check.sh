@@ -7,6 +7,7 @@ set -uo pipefail
 
 BASE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$BASE/lib-ssh-users.sh"
+source "$BASE/../core/lock-reasons.sh"
 
 STATE_DIR="/etc/vpn-script"
 FLAG="$STATE_DIR/autokill.enabled"
@@ -25,6 +26,7 @@ while read -r u; do
     if [[ "$pstate" != "L" ]]; then
       echo "$(date '+%F %T') multilogin: $u has $count logins (limit $LIMIT) -> locking + killing sessions"
       passwd -l "$u" >/dev/null 2>&1 || true
+      lock_reason_set "$u" "multilogin"
     fi
     pkill -u "$u" 2>/dev/null || true
   fi
