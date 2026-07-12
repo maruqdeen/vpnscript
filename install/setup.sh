@@ -36,11 +36,18 @@ if [[ $EUID -ne 0 ]]; then
   echo "Please run as root:  sudo -i  then re-run."
   exit 1
 fi
-if ! grep -qE "24.04|22.04" /etc/os-release; then
-  echo "Warning: tested on Ubuntu 22.04 / 24.04. Continuing in 3s..."; sleep 3
+if ! grep -qE "24.04|22.04|20.04" /etc/os-release; then
+  echo "Warning: tested on Ubuntu 20.04 / 22.04 / 24.04. Continuing in 3s..."; sleep 3
 fi
 
 export DEBIAN_FRONTEND=noninteractive
+# Ubuntu 22.04+ ships needrestart as an apt hook that can pop an
+# interactive "which services should be restarted?" TUI mid-install —
+# DEBIAN_FRONTEND doesn't cover it (it's a separate dpkg hook, not a
+# debconf prompt). Left unset, that dialog can silently block forever
+# on a non-interactive `wget | sudo bash` run, looking like the script
+# just died. NEEDRESTART_MODE=a auto-restarts services without asking.
+export NEEDRESTART_MODE=a
 
 # ============================================================
 echo ">>> [1/10] Dependencies"

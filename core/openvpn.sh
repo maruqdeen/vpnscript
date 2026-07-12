@@ -34,6 +34,7 @@ if [[ "$ACTION" == "disable" ]]; then
 fi
 
 export DEBIAN_FRONTEND=noninteractive
+export NEEDRESTART_MODE=a
 command -v openvpn >/dev/null 2>&1 || apt-get install -y openvpn >/dev/null
 [[ -d /usr/share/easy-rsa ]] || apt-get install -y easy-rsa >/dev/null
 

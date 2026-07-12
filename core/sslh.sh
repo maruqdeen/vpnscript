@@ -60,8 +60,24 @@ if [[ "$ACTION" == "disable" ]]; then
 fi
 
 export DEBIAN_FRONTEND=noninteractive
+export NEEDRESTART_MODE=a
 command -v sslh >/dev/null 2>&1 || apt-get install -y sslh >/dev/null
 systemctl disable --now sslh >/dev/null 2>&1 || true
+
+# The Debian/Ubuntu sslh package picks fork-vs-select via update-alternatives
+# (a debconf question, "sslh/default"), and under a noninteractive frontend
+# that alternative doesn't reliably land at /usr/sbin/sslh across releases —
+# sometimes it's left unset, which silently breaks ExecStart. Resolve the
+# real binary directly instead of assuming the /usr/sbin/sslh symlink exists.
+SSLH_BIN=""
+for cand in /usr/sbin/sslh /usr/sbin/sslh-select /usr/sbin/sslh-fork /usr/bin/sslh; do
+  if [[ -x "$cand" ]]; then SSLH_BIN="$cand"; break; fi
+done
+if [[ -z "$SSLH_BIN" ]]; then
+  echo "ERROR: no sslh binary found after install (checked sslh, sslh-select, sslh-fork)."
+  echo "  Try:  apt-get install --reinstall sslh"
+  exit 1
+fi
 
 write_cfg
 
@@ -72,7 +88,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/sbin/sslh --foreground --config ${CFG}
+ExecStart=${SSLH_BIN} --foreground --config ${CFG}
 Restart=always
 RestartSec=3
 
@@ -81,11 +97,21 @@ WantedBy=multi-user.target
 EOF
 
 systemctl daemon-reload
-systemctl enable --now vpn-sslh
-touch "$FLAG"
-echo "SSLH multiplex ENABLED on port ${PORT}."
-echo "  ssh branch -> tunnel engine target"
-echo "  tls branch -> HAProxy:${TLS_BACKEND_PORT}"
-if [[ ! -f "$INSTALL_DIR/haproxy.enabled" ]]; then
-  echo "Note: HAProxy isn't enabled yet, so SSLH's TLS branch won't connect until you enable it too."
+systemctl enable --now vpn-sslh >/dev/null 2>&1 || true
+
+# systemctl enable --now doesn't fail the script if the unit dies right
+# after starting (e.g. a config error) — verify it's actually up before
+# claiming success, instead of touching the enabled-flag regardless.
+sleep 1
+if systemctl is-active --quiet vpn-sslh; then
+  touch "$FLAG"
+  echo "SSLH multiplex ENABLED on port ${PORT}."
+  echo "  ssh branch -> tunnel engine target"
+  echo "  tls branch -> HAProxy:${TLS_BACKEND_PORT}"
+  if [[ ! -f "$INSTALL_DIR/haproxy.enabled" ]]; then
+    echo "Note: HAProxy isn't enabled yet, so SSLH's TLS branch won't connect until you enable it too."
+  fi
+else
+  echo "ERROR: vpn-sslh failed to start. Check:  journalctl -u vpn-sslh -n 30 --no-pager"
+  exit 1
 fi

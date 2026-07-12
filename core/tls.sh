@@ -31,6 +31,7 @@ fi
 
 echo ">>> Attempting Let's Encrypt for $DOMAIN ..."
 export DEBIAN_FRONTEND=noninteractive
+export NEEDRESTART_MODE=a
 apt-get install -y certbot >/dev/null 2>&1 || true
 
 # Standalone challenge needs port 80 free for a moment.

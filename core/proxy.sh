@@ -26,6 +26,7 @@ if [[ "$ACTION" == "disable" ]]; then
 fi
 
 export DEBIAN_FRONTEND=noninteractive
+export NEEDRESTART_MODE=a
 command -v squid  >/dev/null 2>&1 || apt-get install -y squid >/dev/null
 command -v danted >/dev/null 2>&1 || apt-get install -y dante-server >/dev/null
 

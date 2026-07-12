@@ -37,6 +37,7 @@ mkdir -p "$BADVPN_DIR"
 if [[ ! -s "$BIN" ]]; then
   echo ">>> Building badvpn-udpgw from source (first run only, ~1 min)..."
   export DEBIAN_FRONTEND=noninteractive
+  export NEEDRESTART_MODE=a
   command -v cmake >/dev/null 2>&1 || apt-get install -y cmake >/dev/null
   command -v gcc   >/dev/null 2>&1 || apt-get install -y build-essential >/dev/null
   command -v git   >/dev/null 2>&1 || apt-get install -y git >/dev/null

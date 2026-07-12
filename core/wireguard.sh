@@ -29,6 +29,7 @@ wg_ensure_server() {
   [[ -f "$WG_CLIENTS_JSON" ]] || { echo '[]' > "$WG_CLIENTS_JSON"; chmod 600 "$WG_CLIENTS_JSON"; }
 
   export DEBIAN_FRONTEND=noninteractive
+  export NEEDRESTART_MODE=a
   command -v wg >/dev/null 2>&1 || apt-get install -y wireguard >/dev/null
   command -v qrencode >/dev/null 2>&1 || apt-get install -y qrencode >/dev/null
 

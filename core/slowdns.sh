@@ -25,7 +25,7 @@ fi
 if [[ ! -s "$SLOWDNS_DIR/dnstt-server" ]]; then
 
   # git for the canonical clone (curl fallback covers it if git is missing)
-  command -v git >/dev/null 2>&1 || { export DEBIAN_FRONTEND=noninteractive; apt-get install -y git; }
+  command -v git >/dev/null 2>&1 || { export DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a; apt-get install -y git; }
 
   # dnstt's deps use the Go 1.21 `clear` builtin. Ubuntu 22.04's apt Go is 1.18
   # (too old — build fails with "undefined: clear"), so install an official

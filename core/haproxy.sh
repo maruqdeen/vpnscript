@@ -72,6 +72,7 @@ if [[ "$ACTION" == "disable" ]]; then
 fi
 
 export DEBIAN_FRONTEND=noninteractive
+export NEEDRESTART_MODE=a
 command -v haproxy >/dev/null 2>&1 || apt-get install -y haproxy >/dev/null
 # never let the distro's default service fight over our port
 systemctl disable --now haproxy >/dev/null 2>&1 || true

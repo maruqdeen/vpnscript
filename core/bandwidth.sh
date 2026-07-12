@@ -9,6 +9,7 @@ BW_IFACE_FILE="/etc/vpn-script/bandwidth-iface"
 # Prints the interface name to use for the other bw_* functions.
 bw_ensure() {
   export DEBIAN_FRONTEND=noninteractive
+  export NEEDRESTART_MODE=a
   if ! command -v vnstat >/dev/null 2>&1; then
     apt-get install -y vnstat >/dev/null 2>&1
     systemctl enable --now vnstat >/dev/null 2>&1
