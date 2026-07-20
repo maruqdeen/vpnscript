@@ -14,9 +14,15 @@
 # who discovers the bot's username race the real owner to claim it. The
 # code is the actual credential; only someone with server access ever
 # sees it.
+#
+# UI: /menu shows an inline-keyboard button menu. Actions that need input
+# (create/delete/renew) walk the admin through a step-by-step conversation
+# instead of a single-line command with positional args -- send one field,
+# get the next prompt, repeat, then get the full result at the end.
 
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -32,6 +38,12 @@ SSH_ACTIONS = f"{INSTALL_DIR}/core/telegram-ssh-actions.sh"
 
 POLL_TIMEOUT = 30       # seconds, Telegram long-poll wait
 MAX_REPLY_LEN = 4000    # stay under Telegram's 4096-char message limit
+
+# chat_id -> {"flow": <name>, "step": <index>, "data": {...}}
+# in-memory only -- a bot restart mid-conversation just drops the partial
+# flow, same as any other interrupted chat; acceptable for a single-admin
+# control bot.
+CONVERSATIONS = {}
 
 
 def _read(path):
@@ -75,7 +87,7 @@ def try_claim(token, chat_id, text):
         pass
 
     send_message(token, chat_id,
-                 "You're now the admin of this bot. Send /help to see available commands.")
+                 "You're now the admin of this bot. Send /menu to get started.")
     return chat_id
 
 
@@ -87,12 +99,25 @@ def api_call(token, method, params=None, timeout=35):
         return json.loads(resp.read().decode())
 
 
-def send_message(token, chat_id, text):
+def send_message(token, chat_id, text, keyboard=None):
     text = text[:MAX_REPLY_LEN]
+    params = {"chat_id": chat_id, "text": text}
+    if keyboard is not None:
+        params["reply_markup"] = json.dumps(keyboard)
     try:
-        api_call(token, "sendMessage", {"chat_id": chat_id, "text": text})
+        api_call(token, "sendMessage", params)
     except Exception as e:
         sys.stderr.write(f"sendMessage failed: {e}\n")
+
+
+def answer_callback(token, callback_query_id, text=None):
+    params = {"callback_query_id": callback_query_id}
+    if text:
+        params["text"] = text
+    try:
+        api_call(token, "answerCallbackQuery", params)
+    except Exception as e:
+        sys.stderr.write(f"answerCallbackQuery failed: {e}\n")
 
 
 def run_action(*args):
@@ -122,38 +147,182 @@ def run_status():
         return f"Error: {e}"
 
 
-HELP_TEXT = """VPN-Starter-Kit bot -- available commands:
+MAIN_MENU = {
+    "inline_keyboard": [
+        [{"text": "➕ Create SSH", "callback_data": "create_ssh"},
+         {"text": "\U0001F4CB List SSH", "callback_data": "list_ssh"}],
+        [{"text": "\U0001F5D1 Delete SSH", "callback_data": "delete_ssh"},
+         {"text": "\U0001F504 Renew SSH", "callback_data": "renew_ssh"}],
+        [{"text": "\U0001F4CA Status", "callback_data": "status"}],
+    ]
+}
 
-/status - server status summary
-/createssh <username> <password> <days> [conn_limit] [bw_limit_gb]
-/listssh - list SSH accounts
-/deletessh <username>
-/renewssh <username> <days>
-/help - show this message
-"""
+MENU_TEXT = "VPN-Starter-Kit -- choose an action:"
 
 
-def handle_command(token, chat_id, text):
-    parts = text.strip().split()
-    if not parts:
-        return
-    cmd = parts[0].split("@")[0].lower()  # strip "/cmd@botname" (group chats)
-    args = parts[1:]
+def username_exists(username):
+    try:
+        return subprocess.run(["id", username], capture_output=True, timeout=5).returncode == 0
+    except Exception:
+        return False
 
-    if cmd in ("/start", "/help"):
-        send_message(token, chat_id, HELP_TEXT)
-    elif cmd == "/status":
+
+# ---- step-by-step conversation flows -------------------------------------
+
+def _v_username(v):
+    if not re.match(r"^[a-z_][a-z0-9_-]*$", v):
+        return "Invalid username. Use lowercase letters, digits, - and _ only. Try again:"
+    if username_exists(v):
+        return f"A system user named '{v}' already exists. Try a different username:"
+    return None
+
+
+def _v_nonempty(v):
+    return None if v else "Cannot be empty. Try again:"
+
+
+def _v_digits(v):
+    return None if v.isdigit() else "Must be a whole number. Try again:"
+
+
+FLOWS = {
+    "create_ssh": {
+        "steps": ["username", "password", "days", "conn_limit", "bw_limit_gb"],
+        "prompts": {
+            "username": "Create SSH account\n\nEnter username:",
+            "password": "Enter password:",
+            "days": "Enter expiry (days):",
+            "conn_limit": "Enter connection limit (0 = unlimited):",
+            "bw_limit_gb": "Enter bandwidth limit in GB (0 = unlimited):",
+        },
+        "validators": {
+            "username": _v_username, "password": _v_nonempty,
+            "days": _v_digits, "conn_limit": _v_digits, "bw_limit_gb": _v_digits,
+        },
+        "finish": lambda d: run_action(
+            "create", d["username"], d["password"], d["days"], d["conn_limit"], d["bw_limit_gb"]
+        ),
+    },
+    "delete_ssh": {
+        "steps": ["username"],
+        "prompts": {"username": "Delete SSH account\n\nEnter username to delete:"},
+        "validators": {"username": _v_nonempty},
+        "finish": lambda d: run_action("delete", d["username"]),
+    },
+    "renew_ssh": {
+        "steps": ["username", "days"],
+        "prompts": {
+            "username": "Renew SSH account\n\nEnter username to renew:",
+            "days": "Add how many days:",
+        },
+        "validators": {"username": _v_nonempty, "days": _v_digits},
+        "finish": lambda d: run_action("renew", d["username"], d["days"]),
+    },
+}
+
+
+def start_flow(token, chat_id, flow_name):
+    flow = FLOWS[flow_name]
+    CONVERSATIONS[chat_id] = {"flow": flow_name, "step": 0, "data": {}}
+    first_field = flow["steps"][0]
+    send_message(token, chat_id, flow["prompts"][first_field])
+
+
+def advance_flow(token, chat_id, text):
+    """Feed the next answer into an in-progress flow. Returns True if a flow
+    consumed this message (whether it advanced, re-prompted, or finished)."""
+    convo = CONVERSATIONS.get(chat_id)
+    if not convo:
+        return False
+
+    flow = FLOWS[convo["flow"]]
+    field = flow["steps"][convo["step"]]
+    value = text.strip()
+
+    error = flow["validators"].get(field, lambda v: None)(value)
+    if error:
+        send_message(token, chat_id, error)
+        return True
+
+    convo["data"][field] = value
+    convo["step"] += 1
+
+    if convo["step"] < len(flow["steps"]):
+        next_field = flow["steps"][convo["step"]]
+        send_message(token, chat_id, flow["prompts"][next_field])
+        return True
+
+    # all fields collected -- run it
+    result = flow["finish"](convo["data"])
+    del CONVERSATIONS[chat_id]
+    send_message(token, chat_id, result)
+    send_message(token, chat_id, MENU_TEXT, keyboard=MAIN_MENU)
+    return True
+
+
+def route(token, chat_id, action):
+    """Dispatch a plain action name -- shared by typed commands and button
+    taps, since both mean the same thing once you strip the leading slash."""
+    if action in ("start", "menu"):
+        CONVERSATIONS.pop(chat_id, None)
+        send_message(token, chat_id, MENU_TEXT, keyboard=MAIN_MENU)
+    elif action == "cancel":
+        if CONVERSATIONS.pop(chat_id, None):
+            send_message(token, chat_id, "Cancelled.")
+        send_message(token, chat_id, MENU_TEXT, keyboard=MAIN_MENU)
+    elif action == "status":
         send_message(token, chat_id, run_status())
-    elif cmd == "/createssh":
-        send_message(token, chat_id, run_action("create", *args))
-    elif cmd == "/listssh":
+    elif action == "create_ssh":
+        start_flow(token, chat_id, "create_ssh")
+    elif action == "list_ssh":
         send_message(token, chat_id, run_action("list"))
-    elif cmd == "/deletessh":
-        send_message(token, chat_id, run_action("delete", *args))
-    elif cmd == "/renewssh":
-        send_message(token, chat_id, run_action("renew", *args))
+    elif action == "delete_ssh":
+        start_flow(token, chat_id, "delete_ssh")
+    elif action == "renew_ssh":
+        start_flow(token, chat_id, "renew_ssh")
     else:
-        send_message(token, chat_id, f"Unknown command: {cmd}\n\n{HELP_TEXT}")
+        send_message(token, chat_id, "Unknown action.", keyboard=MAIN_MENU)
+
+
+COMMAND_TO_ACTION = {
+    "/start": "start", "/menu": "menu", "/cancel": "cancel", "/status": "status",
+    "/createssh": "create_ssh", "/listssh": "list_ssh",
+    "/deletessh": "delete_ssh", "/renewssh": "renew_ssh",
+}
+
+
+def handle_message(token, chat_id, text):
+    text = text.strip()
+    if not text:
+        return
+
+    is_command = text.startswith("/")
+    if is_command:
+        cmd = text.split()[0].split("@")[0].lower()  # strip "/cmd@botname" + any args
+        # a command always interrupts an in-progress flow rather than being
+        # swallowed as that step's answer -- otherwise there's no way to
+        # back out of a flow you started by mistake.
+        if chat_id in CONVERSATIONS and cmd not in ("/cancel",):
+            CONVERSATIONS.pop(chat_id, None)
+        action = COMMAND_TO_ACTION.get(cmd)
+        if action:
+            route(token, chat_id, action)
+        else:
+            send_message(token, chat_id, "Unknown command.", keyboard=MAIN_MENU)
+        return
+
+    if advance_flow(token, chat_id, text):
+        return
+
+    send_message(token, chat_id, MENU_TEXT, keyboard=MAIN_MENU)
+
+
+def handle_callback(token, callback_query):
+    cq_id = callback_query["id"]
+    chat_id = str(callback_query.get("message", {}).get("chat", {}).get("id", ""))
+    data = callback_query.get("data", "")
+    answer_callback(token, cq_id)
+    return chat_id, data
 
 
 def flush_backlog(token):
@@ -204,6 +373,18 @@ def main():
 
         for update in resp.get("result", []):
             offset = update["update_id"] + 1
+
+            if "callback_query" in update:
+                chat_id, data = handle_callback(token, update["callback_query"])
+                if admin_id is None or chat_id != admin_id or not data:
+                    continue
+                try:
+                    route(token, chat_id, data)
+                except Exception as e:
+                    sys.stderr.write(f"route error: {e}\n")
+                    send_message(token, chat_id, f"Internal error: {e}")
+                continue
+
             msg = update.get("message") or update.get("edited_message")
             if not msg:
                 continue
@@ -221,9 +402,9 @@ def main():
             if chat_id != admin_id:
                 continue  # not the configured admin -- ignore silently
             try:
-                handle_command(token, chat_id, text)
+                handle_message(token, chat_id, text)
             except Exception as e:
-                sys.stderr.write(f"handle_command error: {e}\n")
+                sys.stderr.write(f"handle_message error: {e}\n")
                 send_message(token, chat_id, f"Internal error: {e}")
 
 
