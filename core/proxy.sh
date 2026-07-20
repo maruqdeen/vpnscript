@@ -51,12 +51,21 @@ fi
 
 cat > /etc/squid/squid.conf <<EOF
 http_port 3128
+cache_effective_user proxy
 auth_param basic program ${PAM_HELPER}
 auth_param basic realm VPN-Starter-Kit Proxy
 acl authenticated proxy_auth REQUIRED
 http_access allow authenticated
 http_access deny all
 EOF
+
+# basic_pam_auth isn't setuid — it runs as squid's own effective user
+# (proxy), which normally can't read /etc/shadow, so pam_unix.so's
+# password check fails for every login even though the helper itself
+# runs fine: connects, then rejects all credentials (SOCKS5/Dante is
+# unaffected — it authenticates a different way). Grant read access via
+# the shadow group instead of making the helper setuid-root.
+usermod -aG shadow proxy 2>/dev/null || true
 
 # ---- Dante: SOCKS5 on 1080, username/password auth via PAM.
 # NOTE: "socksmethod: pam.username" is my best-documented recollection for
@@ -84,7 +93,11 @@ socks pass {
 }
 EOF
 
-systemctl enable --now squid danted
+# restart (not just enable --now) so an already-running squid actually
+# picks up the new shadow group membership — group changes don't apply
+# to a process that's already running.
+systemctl enable squid danted >/dev/null 2>&1 || true
+systemctl restart squid danted
 touch "$FLAG"
 echo "HTTP proxy (3128) + SOCKS5 proxy (1080) ENABLED."
 echo "Both use the SAME username/password as your SSH accounts (via PAM)."
