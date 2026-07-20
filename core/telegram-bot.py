@@ -4,8 +4,19 @@
 # commands sent by the configured admin ONLY -- every other chat ID is
 # silently ignored, since this bot can create/delete real VPN accounts.
 # stdlib only (urllib), matching ws.py/ohp.py's no-pip-dependency style.
+#
+# Admin identity is established via a claim code, not a manually-entered
+# numeric ID: menu/telegram-bot-setup.sh generates a short-lived random
+# code and shows it to whoever has shell access to the server; the first
+# chat to send that exact code becomes the permanent admin, and the code
+# is deleted immediately after a successful claim (single-use). This is
+# deliberately NOT "whoever messages first wins" -- that would let anyone
+# who discovers the bot's username race the real owner to claim it. The
+# code is the actual credential; only someone with server access ever
+# sees it.
 
 import json
+import os
 import subprocess
 import sys
 import time
@@ -16,6 +27,7 @@ import urllib.request
 INSTALL_DIR = "/etc/vpn-script"
 TOKEN_FILE = f"{INSTALL_DIR}/telegram-bot-token"
 ADMIN_ID_FILE = f"{INSTALL_DIR}/telegram-admin-id"
+CLAIM_FILE = f"{INSTALL_DIR}/telegram-bot-claim.json"
 SSH_ACTIONS = f"{INSTALL_DIR}/core/telegram-ssh-actions.sh"
 
 POLL_TIMEOUT = 30       # seconds, Telegram long-poll wait
@@ -25,6 +37,46 @@ MAX_REPLY_LEN = 4000    # stay under Telegram's 4096-char message limit
 def _read(path):
     with open(path) as f:
         return f.read().strip()
+
+
+def _read_admin_id():
+    try:
+        return _read(ADMIN_ID_FILE)
+    except OSError:
+        return None
+
+
+def _read_claim():
+    try:
+        with open(CLAIM_FILE) as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def try_claim(token, chat_id, text):
+    """If awaiting a claim and this message carries the correct, still-valid
+    code, register chat_id as the permanent admin and confirm. Returns the
+    newly-claimed admin_id, or None if this message didn't claim anything."""
+    claim = _read_claim()
+    if not claim:
+        return None
+    if time.time() > claim.get("expires", 0):
+        return None
+    if text.strip() != claim.get("code"):
+        return None
+
+    with open(ADMIN_ID_FILE, "w") as f:
+        f.write(chat_id)
+    os.chmod(ADMIN_ID_FILE, 0o600)
+    try:
+        os.remove(CLAIM_FILE)
+    except OSError:
+        pass
+
+    send_message(token, chat_id,
+                 "You're now the admin of this bot. Send /help to see available commands.")
+    return chat_id
 
 
 def api_call(token, method, params=None, timeout=35):
@@ -121,13 +173,14 @@ def flush_backlog(token):
 
 def main():
     token = _read(TOKEN_FILE)
-    admin_id = _read(ADMIN_ID_FILE)
+    admin_id = _read_admin_id()  # None until someone successfully claims
 
     me = api_call(token, "getMe", timeout=15)
     if not me.get("ok"):
         sys.stderr.write(f"getMe failed: {me}\n")
         sys.exit(1)
-    sys.stdout.write(f"Telegram bot @{me['result']['username']} starting, admin_id={admin_id}\n")
+    state = f"admin_id={admin_id}" if admin_id else "awaiting claim"
+    sys.stdout.write(f"Telegram bot @{me['result']['username']} starting, {state}\n")
     sys.stdout.flush()
 
     offset = flush_backlog(token)
@@ -156,10 +209,17 @@ def main():
                 continue
             chat_id = str(msg.get("chat", {}).get("id", ""))
             text = msg.get("text", "")
-            if chat_id != admin_id:
-                continue  # not the configured admin -- ignore silently
             if not text:
                 continue
+
+            if admin_id is None:
+                claimed = try_claim(token, chat_id, text)
+                if claimed:
+                    admin_id = claimed
+                continue  # not yet an admin -- every message is claim-only
+
+            if chat_id != admin_id:
+                continue  # not the configured admin -- ignore silently
             try:
                 handle_command(token, chat_id, text)
             except Exception as e:
