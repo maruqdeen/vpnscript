@@ -95,6 +95,6 @@ ${PUBKEY}
   - DNS IP     : 1.1.1.1 / 8.8.8.8
 ================================
 NOTE: shared trial login — one active trial at a time, auto-deleted after 24h.
-====== © CREEBSPACE INC  ==============
+====== © CREEBSPACE   ==============
 
 CARD

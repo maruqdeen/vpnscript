@@ -108,6 +108,6 @@ DNSTT (SlowDNS):
   - PubKey     :
 ${PUBKEY}
   - DNS IP     : 1.1.1.1 / 8.8.8.8
-====== © CREEBSPACE INC  ==============
+====== © CREEBSPACE   ==============
 
 CARD
