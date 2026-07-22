@@ -79,7 +79,7 @@ BW_LIMIT_DISPLAY="Unlimited"; [[ "$BW_LIMIT_GB" -gt 0 ]] && BW_LIMIT_DISPLAY="${
 # ---- print the card ----
 cat <<CARD
 
-====== PREMIUM SERVER ======
+====== PREMIUM SERVER ==============
  User Details
   - Username   : ${USERNAME}
   - Password   : ${PASSWORD}
@@ -92,11 +92,8 @@ SSH (WS|SSL)
   - Hostname  : ${HOSTNAME_VAL}
   - Ws ports  : 80, 8080, 8880
   - Tls port  : 443
-  - Payload   : GET / HTTP/1.1[crlf]Host: [host][crlf]Connection: Upgrade[crlf]User-Agent: [ua][crlf]Upgrade: websocket[crlf][crlf]
-================================
-SSH (OHP)
-  - Hostname  : ${HOSTNAME_VAL}
   - Ohp port  : 8181
+  - Payload   : GET / HTTP/1.1[crlf]Host: [host][crlf]Connection: Upgrade[crlf]User-Agent: [ua][crlf]Upgrade: websocket[crlf][crlf]
 ================================
 OVPN (TCP|UDP)
   - Ovpn Tcp     : http://${HOSTNAME_VAL}:85/ovpn/client-tcp.ovpn
@@ -111,6 +108,6 @@ DNSTT (SlowDNS):
   - PubKey     :
 ${PUBKEY}
   - DNS IP     : 1.1.1.1 / 8.8.8.8
-================================
+======== ©CREEB SPACE ===================
 
 CARD

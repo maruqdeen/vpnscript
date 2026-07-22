@@ -77,11 +77,8 @@ SSH (WS|SSL)
   - Hostname  : ${HOSTNAME_VAL}
   - Ws ports  : 80, 8080, 8880
   - Tls port  : 443
-  - Payload   : GET / HTTP/1.1[crlf]Host: [host][crlf]Connection: Upgrade[crlf]User-Agent: [ua][crlf]Upgrade: websocket[crlf][crlf]
-================================
-SSH (OHP)
-  - Hostname  : ${HOSTNAME_VAL}
   - Ohp port  : 8181
+  - Payload   : GET / HTTP/1.1[crlf]Host: [host][crlf]Connection: Upgrade[crlf]User-Agent: [ua][crlf]Upgrade: websocket[crlf][crlf]
 ================================
 OVPN (TCP|UDP)
   - Ovpn Tcp     : http://${HOSTNAME_VAL}:85/ovpn/client-tcp.ovpn
@@ -98,6 +95,6 @@ ${PUBKEY}
   - DNS IP     : 1.1.1.1 / 8.8.8.8
 ================================
 NOTE: shared trial login — one active trial at a time, auto-deleted after 24h.
-================================
+======== ©CREEB SPACE ===================
 
 CARD

@@ -19,6 +19,11 @@ source "$BASE_DIR/ssh-limits.sh"
 source "$BASE_DIR/lock-reasons.sh"
 source "$BASE_DIR/../menu/lib-ssh-users.sh"
 
+# ---- sources for the full account card (same as add-ssh-user.sh) ----
+DOMAIN_FILE="/etc/vpn-script/domain"
+SLOWDNS_DIR="/etc/vpn-script/slowdns"
+NS_DOMAIN_FILE="/etc/vpn-script/ns-domain"
+
 ACTION="${1:-}"
 [[ $# -gt 0 ]] && shift
 
@@ -41,6 +46,7 @@ case "$ACTION" in
 
     BW_LIMIT_MB=$(( BW_LIMIT_GB * 1024 ))
     EXPIRY_ISO=$(date -d "+${DAYS} days" +%Y-%m-%d)
+    EXPIRY_CARD=$(date -d "+${DAYS} days" +%d/%m/%y)
 
     useradd -M -s /bin/false -e "$EXPIRY_ISO" "$USERNAME"
     echo "${USERNAME}:${PASSWORD}" | chpasswd
@@ -50,20 +56,53 @@ case "$ACTION" in
     BW_DISPLAY="Unlimited"; [[ "$BW_LIMIT_GB" -gt 0 ]] && BW_DISPLAY="${BW_LIMIT_GB}GB"
 
     SERVER_IP="$(curl -s https://api.ipify.org || hostname -I | awk '{print $1}')"
-    DOMAIN="$(cat /etc/vpn-script/domain 2>/dev/null)"
-    HOSTNAME_VAL="${DOMAIN:-$SERVER_IP}"
+    if [[ -f "$DOMAIN_FILE" && -s "$DOMAIN_FILE" ]]; then
+      HOSTNAME_VAL="$(cat "$DOMAIN_FILE")"
+    else
+      HOSTNAME_VAL="$SERVER_IP"
+    fi
+    if [[ -f "$NS_DOMAIN_FILE" && -s "$NS_DOMAIN_FILE" ]]; then
+      NS_DOMAIN="$(cat "$NS_DOMAIN_FILE")"
+    else
+      NS_DOMAIN="(not set)"
+    fi
+    if [[ -f "$SLOWDNS_DIR/server.pub" ]]; then
+      PUBKEY="$(cat "$SLOWDNS_DIR/server.pub")"
+    else
+      PUBKEY="(slowdns pubkey not found)"
+    fi
 
     cat <<MSG
-SSH account created
-Username   : ${USERNAME}
-Password   : ${PASSWORD}
-Host       : ${HOSTNAME_VAL}
-IP         : ${SERVER_IP}
-Expires    : ${EXPIRY_ISO}
-Conn Limit : ${CONN_DISPLAY}
-BW Limit   : ${BW_DISPLAY}
-WS ports   : 80, 8080, 8880 (tls 443)
-OHP port   : 8181
+====== PREMIUM SERVER ==============
+ User Details
+  - Username   : ${USERNAME}
+  - Password   : ${PASSWORD}
+  - IP         : ${SERVER_IP}
+  - Expiration : ${EXPIRY_CARD}
+  - Conn Limit : ${CONN_DISPLAY}
+  - BW Limit   : ${BW_DISPLAY}
+================================
+SSH (WS|SSL)
+  - Hostname  : ${HOSTNAME_VAL}
+  - Ws ports  : 80, 8080, 8880
+  - Tls port  : 443
+  - Ohp port  : 8181
+  - Payload   : GET / HTTP/1.1[crlf]Host: [host][crlf]Connection: Upgrade[crlf]User-Agent: [ua][crlf]Upgrade: websocket[crlf][crlf]
+================================
+OVPN (TCP|UDP)
+  - Ovpn Tcp     : http://${HOSTNAME_VAL}:85/ovpn/client-tcp.ovpn
+  - Ovpn Udp     : http://${HOSTNAME_VAL}:81/ovpn/client-udp.ovpn
+================================
+HTTP & SOCKS PROXY
+  - HTTP Proxy   : ${HOSTNAME_VAL}:3128:${USERNAME}:${PASSWORD}
+  - SOCKS5 Proxy : ${HOSTNAME_VAL}:1080:${USERNAME}:${PASSWORD}
+================================
+DNSTT (SlowDNS):
+  - Nameserver : ${NS_DOMAIN}
+  - PubKey     :
+${PUBKEY}
+  - DNS IP     : 1.1.1.1 / 8.8.8.8
+======== ©CREEB SPACE ===================
 MSG
     ;;
 
