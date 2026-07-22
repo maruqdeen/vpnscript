@@ -57,7 +57,7 @@ change_domains() {
 
 # ---- [02] All Service Port Info ----
 port_info() {
-  local domain nsdomain engine haproxy_status sslh_status badvpn_status ovpn_status proxy_status
+  local domain nsdomain engine haproxy_status sslh_status badvpn_status ovpn_status proxy_status stunnel_status
   domain="$(cat "$DOMAIN_FILE" 2>/dev/null)"; [[ -z "$domain" ]] && domain="(not set)"
   nsdomain="$(cat "$NS_DOMAIN_FILE" 2>/dev/null)"; [[ -z "$nsdomain" ]] && nsdomain="(not set)"
   engine="$(cat "$INSTALL_DIR/ssh-engine" 2>/dev/null || echo both)"
@@ -66,6 +66,7 @@ port_info() {
   [[ -f "$INSTALL_DIR/badvpn.enabled" ]]  && badvpn_status="ON"  || badvpn_status="off"
   [[ -f "$INSTALL_DIR/openvpn.enabled" ]] && ovpn_status="ON"    || ovpn_status="off"
   [[ -f "$INSTALL_DIR/proxy.enabled" ]]   && proxy_status="ON"   || proxy_status="off"
+  [[ -f "$INSTALL_DIR/stunnel.enabled" ]] && stunnel_status="ON" || stunnel_status="off"
 
   printf '%s\n' "===================================================="
   echo " SERVICE PORTS"
@@ -85,6 +86,7 @@ port_info() {
   printf "  %-26s %s\n" "OVPN download portal [$ovpn_status]" "85 (tcp), 81 (udp)"
   printf "  %-26s %s\n" "HTTP Proxy [$proxy_status]" "3128"
   printf "  %-26s %s\n" "SOCKS5 Proxy [$proxy_status]" "1080"
+  printf "  %-26s %s\n" "Stunnel SSH-TLS [$stunnel_status]" "110, 587"
   echo ""
   printf "  TLS/WS domain : %s\n" "$domain"
   printf "  SlowDNS NS    : %s\n" "$nsdomain"
@@ -168,7 +170,7 @@ check_running() {
   printf '%s\n' "===================================================="
   echo " RUNNING SERVICES"
   printf '%s\n' "===================================================="
-  systemctl --no-pager --type=service | grep -E 'xray|nginx|dropbear|ws-proxy|ohp-proxy|slowdns|cron|vpn-haproxy|vpn-sslh|vpn-badvpn|openvpn|squid|danted'
+  systemctl --no-pager --type=service | grep -E 'xray|nginx|dropbear|ws-proxy|ohp-proxy|slowdns|cron|vpn-haproxy|vpn-sslh|vpn-badvpn|openvpn|squid|danted|vpn-stunnel'
 }
 
 # ---- [07] Restart All Service ----
@@ -196,6 +198,8 @@ restart_all() {
     systemctl restart squid danted 2>/dev/null \
       && printf "  %ssquid + danted%s restarted\n" "$G" "$X"
   fi
+  [[ -f "$INSTALL_DIR/stunnel.enabled" ]] && systemctl restart vpn-stunnel 2>/dev/null \
+    && printf "  %svpn-stunnel%s restarted\n" "$G" "$X"
 }
 
 # ---- [08] Change Banner ----
@@ -346,6 +350,28 @@ toggle_proxy() {
   esac
 }
 
+# ---- [15] Toggle Stunnel (SSH-over-TLS) ----
+toggle_stunnel() {
+  if [[ -f "$INSTALL_DIR/stunnel.enabled" ]]; then
+    echo "Stunnel (SSH-over-TLS, 110/587): ENABLED"
+  else
+    echo "Stunnel (SSH-over-TLS, 110/587): DISABLED"
+  fi
+  echo "(disguised as POP3S/SMTP submission — a different port pair from"
+  echo " HAProxy's dedicated SSH-SSL port 444; 443 excluded, nginx owns it)"
+  echo ""
+  echo "  [1] Enable"
+  echo "  [2] Disable"
+  echo "  [0] Back"
+  read -rp "Choose: " opt
+  case "$opt" in
+    1) bash "$CORE_DIR/stunnel.sh" enable ;;
+    2) bash "$CORE_DIR/stunnel.sh" disable ;;
+    0) return ;;
+    *) echo "Invalid option." ;;
+  esac
+}
+
 while true; do
   clear
   echo ""
@@ -367,6 +393,7 @@ while true; do
   printf "  ${BL}[12]${X} Toggle BadVPN (UDPGW)\n"
   printf "  ${BL}[13]${X} Toggle OpenVPN (TCP/UDP)\n"
   printf "  ${BL}[14]${X} Toggle HTTP & SOCKS Proxy\n"
+  printf "  ${BL}[15]${X} Toggle Stunnel (SSH-over-TLS)\n"
   echo ""
   printf "  ${Y}[00]${X} Main Menu\n"
   echo ""
@@ -387,6 +414,7 @@ while true; do
     12)   toggle_badvpn ; pause ;;
     13)   toggle_openvpn ; pause ;;
     14)   toggle_proxy ; pause ;;
+    15)   toggle_stunnel ; pause ;;
     0|00) exit 0 ;;
     *) echo "Invalid option."; sleep 1 ;;
   esac
