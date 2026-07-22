@@ -35,6 +35,11 @@ FLOW_ACCESS_KEY = {
     "create_trojan": "trojan", "create_wireguard": "wireguard",
 }
 
+FLOW_DISPLAY_NAME = {
+    "create_ssh": "SSH", "create_vmess": "VMess", "create_vless": "VLESS",
+    "create_trojan": "Trojan", "create_wireguard": "WireGuard",
+}
+
 
 def is_allowed(key):
     try:
@@ -234,7 +239,7 @@ def route(token, chat_id, action):
     elif action in FLOWS:
         if not is_allowed(FLOW_ACCESS_KEY[action]):
             send_message(token, chat_id,
-                         "This account type is currently unavailable. Please choose another type:",
+                         f"Creation on {FLOW_DISPLAY_NAME[action]} is locked, contact admin for access.",
                          keyboard=build_main_menu())
             return
         start_flow(token, chat_id, action)
