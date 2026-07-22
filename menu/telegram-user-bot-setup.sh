@@ -13,6 +13,63 @@ INSTALL_DIR="/etc/vpn-script"
 TOKEN_FILE="$INSTALL_DIR/telegram-user-bot-token"
 FLAG="$INSTALL_DIR/telegram-user-bot.enabled"
 UNIT="/etc/systemd/system/vpn-telegram-user-bot.service"
+ACCESS_FILE="$INSTALL_DIR/telegram-user-bot-access.json"
+
+# protocol key -> display label, in the order shown on the Control Access screen
+ACCESS_KEYS=(ssh vmess vless trojan wireguard)
+ACCESS_LABELS=("SSH/DNS" "Xray Vmess" "Xray Vless" "Xray Trojan" "Wireguard")
+
+access_ensure_file() {
+  [[ -f "$ACCESS_FILE" ]] || echo '{"ssh":true,"vmess":true,"vless":true,"trojan":true,"wireguard":true}' > "$ACCESS_FILE"
+}
+
+access_get() {
+  access_ensure_file
+  # NOT `.[$k] // true` -- jq's // treats an explicit `false` the same as
+  # missing/null, so that would silently flip a disallowed entry back to
+  # allowed on every read. Only default to true when the key is truly absent.
+  jq -r --arg k "$1" '(.[$k]) as $v | if $v == null then true else $v end' "$ACCESS_FILE" 2>/dev/null
+}
+
+access_toggle() {
+  access_ensure_file
+  local key="$1" current tmp
+  current="$(access_get "$key")"
+  tmp=$(mktemp)
+  jq --arg k "$key" --argjson v "$( [[ "$current" == "true" ]] && echo false || echo true )" \
+    '.[$k] = $v' "$ACCESS_FILE" > "$tmp" && chmod 600 "$tmp" && mv "$tmp" "$ACCESS_FILE"
+}
+
+control_access() {
+  while true; do
+    access_ensure_file
+    echo ""
+    echo "CONTROL ACCESS (User Bot -- which account types customers can self-create)"
+    echo ""
+    for i in "${!ACCESS_KEYS[@]}"; do
+      local state
+      state="$(access_get "${ACCESS_KEYS[$i]}")"
+      if [[ "$state" == "true" ]]; then
+        printf "  [%d] %-14s [Allow]\n" "$((i+1))" "${ACCESS_LABELS[$i]}"
+      else
+        printf "  [%d] %-14s [Disallow]\n" "$((i+1))" "${ACCESS_LABELS[$i]}"
+      fi
+    done
+    echo "  [0] Back"
+    read -rp "Toggle which: " aopt
+    case "$aopt" in
+      0) return ;;
+      ''|*[!0-9]*) echo "Invalid option." ;;
+      *)
+        if (( aopt >= 1 && aopt <= ${#ACCESS_KEYS[@]} )); then
+          access_toggle "${ACCESS_KEYS[$((aopt-1))]}"
+        else
+          echo "Invalid option."
+        fi
+        ;;
+    esac
+  done
+}
 
 connect() {
   echo "This connects a SEPARATE Telegram bot for self-service account"
@@ -92,11 +149,13 @@ fi
 echo ""
 echo "  [1] Connect / Reconnect"
 echo "  [2] Disconnect"
+echo "  [3] Control Access"
 echo "  [0] Back"
 read -rp "Choose: " opt
 case "$opt" in
   1) connect ;;
   2) disconnect ;;
+  3) control_access ;;
   0) exit 0 ;;
   *) echo "Invalid option." ;;
 esac

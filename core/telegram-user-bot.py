@@ -21,9 +21,28 @@ import urllib.request
 
 INSTALL_DIR = "/etc/vpn-script"
 TOKEN_FILE = f"{INSTALL_DIR}/telegram-user-bot-token"
+ACCESS_FILE = f"{INSTALL_DIR}/telegram-user-bot-access.json"
 SSH_ACTIONS = f"{INSTALL_DIR}/core/telegram-ssh-actions.sh"
 XRAY_ACTIONS = f"{INSTALL_DIR}/core/telegram-xray-actions.sh"
 WG_ACTIONS = f"{INSTALL_DIR}/core/telegram-wireguard-actions.sh"
+
+# create_X action -> Control Access key (menu/telegram-user-bot-setup.sh
+# writes/toggles this same file). Missing file or missing key both mean
+# "allowed" -- an admin who never touched Control Access gets the same
+# behavior as before this feature existed.
+FLOW_ACCESS_KEY = {
+    "create_ssh": "ssh", "create_vmess": "vmess", "create_vless": "vless",
+    "create_trojan": "trojan", "create_wireguard": "wireguard",
+}
+
+
+def is_allowed(key):
+    try:
+        with open(ACCESS_FILE) as f:
+            data = json.load(f)
+        return bool(data.get(key, True))
+    except (OSError, json.JSONDecodeError):
+        return True
 
 FIXED_EXPIRY_DAYS = "7"
 POLL_TIMEOUT = 30
@@ -84,15 +103,24 @@ def ssh_username_exists(username):
         return False
 
 
-MAIN_MENU = {
-    "inline_keyboard": [
-        [{"text": "SSH", "callback_data": "create_ssh"},
-         {"text": "VMess", "callback_data": "create_vmess"}],
-        [{"text": "VLESS", "callback_data": "create_vless"},
-         {"text": "Trojan", "callback_data": "create_trojan"}],
-        [{"text": "WireGuard", "callback_data": "create_wireguard"}],
-    ]
-}
+def _btn(text, action):
+    key = FLOW_ACCESS_KEY[action]
+    label = text if is_allowed(key) else f"{text} (Off)"
+    return {"text": label, "callback_data": action}
+
+
+def build_main_menu():
+    # rebuilt on every call, not a module-level constant -- Control Access
+    # can toggle at any time and the menu needs to reflect that immediately.
+    return {
+        "inline_keyboard": [
+            [_btn("SSH", "create_ssh"), _btn("VMess", "create_vmess")],
+            [_btn("VLESS", "create_vless"), _btn("Trojan", "create_trojan")],
+            [_btn("WireGuard", "create_wireguard")],
+        ]
+    }
+
+
 MENU_TEXT = "Create a free account -- choose a type:"
 
 
@@ -191,22 +219,27 @@ def advance_flow(token, chat_id, text):
     result = flow["finish"](convo["data"])
     del CONVERSATIONS[chat_id]
     send_message(token, chat_id, result)
-    send_message(token, chat_id, MENU_TEXT, keyboard=MAIN_MENU)
+    send_message(token, chat_id, MENU_TEXT, keyboard=build_main_menu())
     return True
 
 
 def route(token, chat_id, action):
     if action in ("start", "menu"):
         CONVERSATIONS.pop(chat_id, None)
-        send_message(token, chat_id, MENU_TEXT, keyboard=MAIN_MENU)
+        send_message(token, chat_id, MENU_TEXT, keyboard=build_main_menu())
     elif action == "cancel":
         if CONVERSATIONS.pop(chat_id, None):
             send_message(token, chat_id, "Cancelled.")
-        send_message(token, chat_id, MENU_TEXT, keyboard=MAIN_MENU)
+        send_message(token, chat_id, MENU_TEXT, keyboard=build_main_menu())
     elif action in FLOWS:
+        if not is_allowed(FLOW_ACCESS_KEY[action]):
+            send_message(token, chat_id,
+                         "This account type is currently unavailable. Please choose another type:",
+                         keyboard=build_main_menu())
+            return
         start_flow(token, chat_id, action)
     else:
-        send_message(token, chat_id, "Unknown action.", keyboard=MAIN_MENU)
+        send_message(token, chat_id, "Unknown action.", keyboard=build_main_menu())
 
 
 COMMAND_TO_ACTION = {
@@ -230,13 +263,13 @@ def handle_message(token, chat_id, text):
         if action:
             route(token, chat_id, action)
         else:
-            send_message(token, chat_id, "Unknown command.", keyboard=MAIN_MENU)
+            send_message(token, chat_id, "Unknown command.", keyboard=build_main_menu())
         return
 
     if advance_flow(token, chat_id, text):
         return
 
-    send_message(token, chat_id, MENU_TEXT, keyboard=MAIN_MENU)
+    send_message(token, chat_id, MENU_TEXT, keyboard=build_main_menu())
 
 
 def flush_backlog(token):
