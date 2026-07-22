@@ -61,11 +61,14 @@ def _read_cooldowns():
         return {}
 
 
-def record_creation(chat_id):
+def record_creation(chat_id, protocol_key):
     """Called only after a SUCCESSFUL account creation -- a failed attempt
-    (bad username, validation error) must never start the cooldown."""
+    (bad username, validation error) must never start the cooldown.
+    Tracked per (chat_id, protocol): a user can hold one account of EACH
+    type at once -- SSH, VMess, VLESS, Trojan, WireGuard are independent --
+    just not a second one of the SAME type within 7 days."""
     data = _read_cooldowns()
-    data[chat_id] = time.time()
+    data.setdefault(chat_id, {})[protocol_key] = time.time()
     tmp = f"{COOLDOWN_FILE}.tmp"
     with open(tmp, "w") as f:
         json.dump(data, f)
@@ -76,8 +79,8 @@ def record_creation(chat_id):
         pass
 
 
-def cooldown_remaining_seconds(chat_id):
-    last = _read_cooldowns().get(chat_id)
+def cooldown_remaining_seconds(chat_id, protocol_key):
+    last = _read_cooldowns().get(chat_id, {}).get(protocol_key)
     if last is None:
         return 0
     remaining = COOLDOWN_SECONDS - (time.time() - last)
@@ -261,7 +264,7 @@ def advance_flow(token, chat_id, text):
     success, result_text = flow["finish"](convo["data"])
     del CONVERSATIONS[chat_id]
     if success:
-        record_creation(chat_id)
+        record_creation(chat_id, FLOW_ACCESS_KEY[convo["flow"]])
     send_message(token, chat_id, result_text)
     send_message(token, chat_id, MENU_TEXT, keyboard=build_main_menu())
     return True
@@ -276,17 +279,19 @@ def route(token, chat_id, action):
             send_message(token, chat_id, "Cancelled.")
         send_message(token, chat_id, MENU_TEXT, keyboard=build_main_menu())
     elif action in FLOWS:
-        if not is_allowed(FLOW_ACCESS_KEY[action]):
+        key = FLOW_ACCESS_KEY[action]
+        name = FLOW_DISPLAY_NAME[action]
+        if not is_allowed(key):
             send_message(token, chat_id,
-                         f"Creation on {FLOW_DISPLAY_NAME[action]} is locked, contact admin for access.",
+                         f"Creation on {name} is locked, contact admin for access.",
                          keyboard=build_main_menu())
             return
-        remaining = cooldown_remaining_seconds(chat_id)
+        remaining = cooldown_remaining_seconds(chat_id, key)
         if remaining > 0:
             days = int(remaining // 86400) + (1 if remaining % 86400 else 0)
             send_message(token, chat_id,
-                         f"You've already created an account. Please wait {days} more day"
-                         f"{'s' if days != 1 else ''} before creating another.",
+                         f"You've already created a {name} account. Please wait {days} more day"
+                         f"{'s' if days != 1 else ''} before creating another {name} account.",
                          keyboard=build_main_menu())
             return
         start_flow(token, chat_id, action)
