@@ -11,6 +11,7 @@
 # stdlib only (urllib), matching ws.py/ohp.py/telegram-bot.py's style.
 
 import json
+import os
 import re
 import subprocess
 import sys
@@ -22,6 +23,8 @@ import urllib.request
 INSTALL_DIR = "/etc/vpn-script"
 TOKEN_FILE = f"{INSTALL_DIR}/telegram-user-bot-token"
 ACCESS_FILE = f"{INSTALL_DIR}/telegram-user-bot-access.json"
+COOLDOWN_FILE = f"{INSTALL_DIR}/telegram-user-bot-cooldown.json"
+COOLDOWN_SECONDS = 7 * 24 * 3600  # one account per chat per 7 days, any protocol
 SSH_ACTIONS = f"{INSTALL_DIR}/core/telegram-ssh-actions.sh"
 XRAY_ACTIONS = f"{INSTALL_DIR}/core/telegram-xray-actions.sh"
 WG_ACTIONS = f"{INSTALL_DIR}/core/telegram-wireguard-actions.sh"
@@ -48,6 +51,38 @@ def is_allowed(key):
         return bool(data.get(key, True))
     except (OSError, json.JSONDecodeError):
         return True
+
+
+def _read_cooldowns():
+    try:
+        with open(COOLDOWN_FILE) as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def record_creation(chat_id):
+    """Called only after a SUCCESSFUL account creation -- a failed attempt
+    (bad username, validation error) must never start the cooldown."""
+    data = _read_cooldowns()
+    data[chat_id] = time.time()
+    tmp = f"{COOLDOWN_FILE}.tmp"
+    with open(tmp, "w") as f:
+        json.dump(data, f)
+    os.replace(tmp, COOLDOWN_FILE)
+    try:
+        os.chmod(COOLDOWN_FILE, 0o600)
+    except OSError:
+        pass
+
+
+def cooldown_remaining_seconds(chat_id):
+    last = _read_cooldowns().get(chat_id)
+    if last is None:
+        return 0
+    remaining = COOLDOWN_SECONDS - (time.time() - last)
+    return max(0, remaining)
+
 
 FIXED_EXPIRY_DAYS = "7"
 POLL_TIMEOUT = 30
@@ -88,17 +123,19 @@ def answer_callback(token, callback_query_id):
 
 
 def run_script(script, *args):
+    """Returns (success, output) -- success is the actual exit code, since
+    the cooldown must only start on a real creation, not a failed attempt."""
     try:
         proc = subprocess.run(
             ["bash", script, *args],
             capture_output=True, text=True, timeout=60,
         )
         out = (proc.stdout or "") + (proc.stderr or "")
-        return out.strip() or "(no output)"
+        return proc.returncode == 0, (out.strip() or "(no output)")
     except subprocess.TimeoutExpired:
-        return "Command timed out."
+        return False, "Command timed out."
     except Exception as e:
-        return f"Error running command: {e}"
+        return False, f"Error running command: {e}"
 
 
 def ssh_username_exists(username):
@@ -221,9 +258,11 @@ def advance_flow(token, chat_id, text):
         send_message(token, chat_id, flow["prompts"][next_field])
         return True
 
-    result = flow["finish"](convo["data"])
+    success, result_text = flow["finish"](convo["data"])
     del CONVERSATIONS[chat_id]
-    send_message(token, chat_id, result)
+    if success:
+        record_creation(chat_id)
+    send_message(token, chat_id, result_text)
     send_message(token, chat_id, MENU_TEXT, keyboard=build_main_menu())
     return True
 
@@ -240,6 +279,14 @@ def route(token, chat_id, action):
         if not is_allowed(FLOW_ACCESS_KEY[action]):
             send_message(token, chat_id,
                          f"Creation on {FLOW_DISPLAY_NAME[action]} is locked, contact admin for access.",
+                         keyboard=build_main_menu())
+            return
+        remaining = cooldown_remaining_seconds(chat_id)
+        if remaining > 0:
+            days = int(remaining // 86400) + (1 if remaining % 86400 else 0)
+            send_message(token, chat_id,
+                         f"You've already created an account. Please wait {days} more day"
+                         f"{'s' if days != 1 else ''} before creating another.",
                          keyboard=build_main_menu())
             return
         start_flow(token, chat_id, action)
