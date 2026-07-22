@@ -97,15 +97,29 @@ case "$ACTION" in
       LINK_PLAIN="$(vmess_link "$USERNAME" "$HOSTNAME_VAL" "80" "$UUID" "ws" "/vmess" "")"
       LINK_GRPC="$(vmess_link "$USERNAME" "$HOSTNAME_VAL" "443" "$UUID" "grpc" "vmess-grpc" "tls")"
       cat <<MSG
-Xray/VMess account created
-Remarks : ${USERNAME}
-Domain  : ${HOSTNAME_VAL}
-id      : ${UUID}
-Expires : ${EXPIRY}
-
+====================================
+   Xray/Vmess Account
+====================================
+Remarks       : ${USERNAME}
+Domain        : ${HOSTNAME_VAL}
+Port TLS      : 443
+Port none TLS : 80
+Port GRPC     : 443
+id            : ${UUID}
+alterId       : 0
+Security      : auto
+Network       : ws
+Path          : /vmess
+ServiceName   : vmess-grpc
+====================================
 Link TLS      : ${LINK_TLS}
+====================================
 Link none TLS : ${LINK_PLAIN}
+====================================
 Link GRPC     : ${LINK_GRPC}
+====================================
+Expired On    : ${EXPIRY}
+====================================
 MSG
       ;;
     vless)
@@ -113,29 +127,52 @@ MSG
       LINK_PLAIN="$(vless_link "$USERNAME" "$HOSTNAME_VAL" "80" "$UUID" "ws" "/vless" "none")"
       LINK_GRPC="$(vless_link "$USERNAME" "$HOSTNAME_VAL" "443" "$UUID" "grpc" "vless-grpc" "tls")"
       cat <<MSG
-Xray/VLESS account created
-Remarks : ${USERNAME}
-Domain  : ${HOSTNAME_VAL}
-id      : ${UUID}
-Expires : ${EXPIRY}
-
+====================================
+   Xray/Vless Account
+====================================
+Remarks       : ${USERNAME}
+Domain        : ${HOSTNAME_VAL}
+Port TLS      : 443
+Port none TLS : 80
+Port GRPC     : 443
+id            : ${UUID}
+Encryption    : none
+Network       : ws
+Path          : /vless
+ServiceName   : vless-grpc
+====================================
 Link TLS      : ${LINK_TLS}
+====================================
 Link none TLS : ${LINK_PLAIN}
+====================================
 Link GRPC     : ${LINK_GRPC}
+====================================
+Expired On    : ${EXPIRY}
+====================================
 MSG
       ;;
     trojan)
       LINK_TLS="$(trojan_link "$USERNAME" "$HOSTNAME_VAL" "443" "$UUID" "ws" "/trojan")"
       LINK_GRPC="$(trojan_link "$USERNAME" "$HOSTNAME_VAL" "443" "$UUID" "grpc" "trojan-grpc")"
       cat <<MSG
-Xray/Trojan account created
-Remarks  : ${USERNAME}
-Domain   : ${HOSTNAME_VAL}
-password : ${UUID}
-Expires  : ${EXPIRY}
-
-Link TLS  : ${LINK_TLS}
-Link GRPC : ${LINK_GRPC}
+====================================
+   Xray/Trojan Account
+====================================
+Remarks       : ${USERNAME}
+Domain        : ${HOSTNAME_VAL}
+Port TLS      : 443
+Port GRPC     : 443
+password      : ${UUID}
+Network       : ws
+Path          : /trojan
+ServiceName   : trojan-grpc
+====================================
+Link TLS      : ${LINK_TLS}
+====================================
+Link GRPC     : ${LINK_GRPC}
+====================================
+Expired On    : ${EXPIRY}
+====================================
 MSG
       ;;
     esac
