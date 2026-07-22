@@ -68,7 +68,9 @@ def record_creation(chat_id, protocol_key):
     type at once -- SSH, VMess, VLESS, Trojan, WireGuard are independent --
     just not a second one of the SAME type within 7 days."""
     data = _read_cooldowns()
-    data.setdefault(chat_id, {})[protocol_key] = time.time()
+    if not isinstance(data.get(chat_id), dict):
+        data[chat_id] = {}  # replace an old-format {chat_id: timestamp} entry
+    data[chat_id][protocol_key] = time.time()
     tmp = f"{COOLDOWN_FILE}.tmp"
     with open(tmp, "w") as f:
         json.dump(data, f)
@@ -80,7 +82,13 @@ def record_creation(chat_id, protocol_key):
 
 
 def cooldown_remaining_seconds(chat_id, protocol_key):
-    last = _read_cooldowns().get(chat_id, {}).get(protocol_key)
+    entry = _read_cooldowns().get(chat_id)
+    # defensive: an older version of this file stored {chat_id: timestamp}
+    # (one global cooldown, not per-protocol) -- treat a non-dict entry as
+    # no recorded cooldown rather than crashing on .get().
+    if not isinstance(entry, dict):
+        return 0
+    last = entry.get(protocol_key)
     if last is None:
         return 0
     remaining = COOLDOWN_SECONDS - (time.time() - last)
