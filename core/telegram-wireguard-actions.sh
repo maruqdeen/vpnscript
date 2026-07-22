@@ -58,12 +58,14 @@ case "$ACTION" in
     wg_sync_peers
 
     cat <<MSG
-WireGuard account created
-Remarks  : ${USERNAME}
-Address  : ${IP}/24
-Endpoint : ${HOSTNAME_VAL}:${WG_PORT}
-Expires  : ${EXPIRY}
-
+====================================
+   Wireguard Account
+====================================
+Remarks       : ${USERNAME}
+Address       : ${IP}/24
+Endpoint      : ${HOSTNAME_VAL}:${WG_PORT}
+Expired On    : ${EXPIRY}
+====================================
 [Interface]
 PrivateKey = ${PRIV}
 Address = ${IP}/24
@@ -75,6 +77,7 @@ PresharedKey = ${PSK}
 AllowedIPs = 0.0.0.0/0, ::/0
 Endpoint = ${HOSTNAME_VAL}:${WG_PORT}
 PersistentKeepalive = 25
+====================================
 MSG
     ;;
   *)
