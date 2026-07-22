@@ -1,8 +1,11 @@
 #!/bin/bash
 # VPN-Starter-Kit :: menu/menu-bot-api.sh
-# Bot & Api Setup submenu. TelegramBot is live; Web Api is still a menu
-# shell only — functionality intentionally not implemented yet, per
-# explicit instruction to hold off until the exact behavior is specified.
+# Bot & Api Setup submenu. Two SEPARATE Telegram bots, not one bot with
+# roles: the Admin Bot (full control, claim-code gated) and the User Bot
+# (open self-service account creation, no gate, deliberately capped --
+# 7-day expiry, no delete/renew/list). Web Api is still a menu shell only
+# — functionality intentionally not implemented yet, per explicit
+# instruction to hold off until the exact behavior is specified.
 set -uo pipefail
 
 if [[ $EUID -ne 0 ]]; then echo "Run as root."; exit 1; fi
@@ -28,8 +31,9 @@ while true; do
   center "BOT & API SETUP"
   printf '%s\n' "===================================================="
   echo ""
-  printf "  ${BL}[1]${X} Connect to TelegramBot\n"
-  printf "  ${BL}[2]${X} Setup Web Api\n"
+  printf "  ${BL}[1]${X} Connect Admin Bot (Telegram)\n"
+  printf "  ${BL}[2]${X} Connect User Bot (Telegram)\n"
+  printf "  ${BL}[3]${X} Setup Web Api\n"
   echo ""
   printf "  ${Y}[0]${X} Main Menu\n"
   echo ""
@@ -37,7 +41,8 @@ while true; do
 
   case "$opt" in
     1) bash "$BASE/telegram-bot-setup.sh" ; pause ;;
-    2) echo "Setup Web Api — not built yet." ; pause ;;
+    2) bash "$BASE/telegram-user-bot-setup.sh" ; pause ;;
+    3) echo "Setup Web Api — not built yet." ; pause ;;
     0) exit 0 ;;
     *) echo "Invalid option."; sleep 1 ;;
   esac
