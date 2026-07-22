@@ -102,7 +102,7 @@ DNSTT (SlowDNS):
   - PubKey     :
 ${PUBKEY}
   - DNS IP     : 1.1.1.1 / 8.8.8.8
-======== ©CREEB SPACE ===================
+====== © CREEBSPACE INC  ==============
 MSG
     ;;
 
