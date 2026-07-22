@@ -37,8 +37,10 @@ fi
 echo "$TARGET_PORT" > "$TARGET_PORT_FILE"
 echo "$MODE" > "$ENGINE_FILE"
 
-# ws.py reads its target port from a file at startup — restart to pick it up.
+# ws.py/ohp.py read their target port from a file at startup — restart
+# both to pick it up.
 systemctl restart ws-proxy >/dev/null 2>&1 || true
+systemctl restart ohp-proxy >/dev/null 2>&1 || true
 
 # Rewrite + restart SlowDNS pointed at the new target port.
 if [[ -f "$CORE_DIR/lib-slowdns-unit.sh" ]]; then
@@ -47,8 +49,10 @@ if [[ -f "$CORE_DIR/lib-slowdns-unit.sh" ]]; then
   systemctl restart slowdns >/dev/null 2>&1 || true
 fi
 
-# Keep HAProxy/SSLH backends in sync if they're enabled.
-[[ -f "$CORE_DIR/haproxy.sh" ]] && bash "$CORE_DIR/haproxy.sh" regen
-[[ -f "$CORE_DIR/sslh.sh" ]]    && bash "$CORE_DIR/sslh.sh" regen
+# Keep HAProxy/SSLH/Stunnel/UDP-Custom backends in sync if they're enabled.
+[[ -f "$CORE_DIR/haproxy.sh" ]]    && bash "$CORE_DIR/haproxy.sh" regen
+[[ -f "$CORE_DIR/sslh.sh" ]]       && bash "$CORE_DIR/sslh.sh" regen
+[[ -f "$CORE_DIR/stunnel.sh" ]]    && bash "$CORE_DIR/stunnel.sh" regen
+[[ -f "$CORE_DIR/udp-custom.sh" ]] && bash "$CORE_DIR/udp-custom.sh" regen
 
 echo "SSH tunnel engine set to '$MODE' (tunnel target: 127.0.0.1:$TARGET_PORT)."
