@@ -158,7 +158,20 @@ while true; do
     9)  bash "$BASE/menu-security.sh" ;;
     10) echo "WebMin — not built yet." ; pause ;;
     11) echo "Backup — not built yet." ; pause ;;
-    12) bash "$INSTALL_DIR/install/uninstall.sh" ; pause ;;
+    12) bash "$INSTALL_DIR/install/uninstall.sh"
+        # A completed uninstall just deleted $INSTALL_DIR out from under
+        # this very process -- a running script keeps executing whatever's
+        # already loaded even after its own file is gone, so without this
+        # check the loop would just redraw a dashboard for a panel that no
+        # longer exists. Check the actual resulting state (not an exit
+        # code) so this is correct whether the uninstall ran to completion
+        # or was cancelled partway.
+        if [[ ! -d "$INSTALL_DIR" ]]; then
+          clear
+          echo "VPN-Starter-Kit has been uninstalled. Goodbye."
+          exit 0
+        fi
+        pause ;;
     0)  clear; exit 0 ;;
     *)  echo "Invalid option."; sleep 1 ;;
   esac
