@@ -125,6 +125,7 @@ while true; do
   printf "  ${B}[3]${X} VLESS Menu           ${B}[8]${X}  Bot & Api Setup\n"
   printf "  ${B}[4]${X} Trojan Menu          ${B}[9]${X}  Security Mgt\n"
   printf "  ${B}[5]${X} Wireguard Menu       ${B}[10]${X} WebMin\n"
+  printf "  ${B}[11]${X} Backup               ${B}[12]${X} Uninstall\n"
   echo ""
   printf "  ${B}[0]${X} Exit\n"
   echo ""
@@ -156,6 +157,8 @@ while true; do
     8)  bash "$BASE/menu-bot-api.sh" ;;
     9)  bash "$BASE/menu-security.sh" ;;
     10) echo "WebMin — not built yet." ; pause ;;
+    11) echo "Backup — not built yet." ; pause ;;
+    12) bash "$INSTALL_DIR/install/uninstall.sh" ; pause ;;
     0)  clear; exit 0 ;;
     *)  echo "Invalid option."; sleep 1 ;;
   esac

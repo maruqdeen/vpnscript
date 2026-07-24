@@ -35,7 +35,10 @@ echo ">>> Refreshing core + menu scripts in $INSTALL_DIR ..."
 cp "$EXTRACTED/core/"*.py "$INSTALL_DIR/core/" 2>/dev/null || true
 cp "$EXTRACTED/core/"*.sh "$INSTALL_DIR/core/" 2>/dev/null || true
 cp "$EXTRACTED/menu/"*.sh "$INSTALL_DIR/menu/"
-chmod +x "$INSTALL_DIR/menu/"*.sh "$INSTALL_DIR/core/"*.py "$INSTALL_DIR/core/"*.sh 2>/dev/null || true
+mkdir -p "$INSTALL_DIR/install"
+cp "$EXTRACTED/install/uninstall.sh" "$INSTALL_DIR/install/" 2>/dev/null || true
+chmod +x "$INSTALL_DIR/menu/"*.sh "$INSTALL_DIR/core/"*.py "$INSTALL_DIR/core/"*.sh \
+  "$INSTALL_DIR/install/"*.sh 2>/dev/null || true
 
 echo ""
 echo "==================================================="
