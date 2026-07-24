@@ -81,6 +81,28 @@ fi
 
 write_cfg
 
+# Confirmed two genuinely different sslh builds across Ubuntu versions via
+# real output on live boxes: 22.04's (1.20-1+deb11u1build0.22.04.1) has
+# short options ONLY, no --config long form at all, and -F must be glued
+# directly to the path with no space or it silently falls back to its own
+# default search paths and fails to start. 24.04's build DOES list a
+# --config=<file> long option. Rather than hardcode one build's syntax,
+# probe this binary's own usage output and pick accordingly.
+#
+# IMPORTANT: this probe output must never be interpolated directly into an
+# unquoted heredoc -- an earlier version of this script had a stray pair of
+# backticks in a comment inside the unit-file heredoc below, which bash
+# silently executed as command substitution on every run, splicing live
+# 'sslh --help' output into the generated unit file and corrupting it.
+# Capturing into a plain shell variable first, as done here, avoids that
+# entirely.
+SSLH_PROBE="$("$SSLH_BIN" --help 2>&1 || true)"
+if echo "$SSLH_PROBE" | grep -q -- "--config"; then
+  CONFIG_FLAG="--config=${CFG}"
+else
+  CONFIG_FLAG="-F${CFG}"
+fi
+
 cat > "$UNIT" <<EOF
 [Unit]
 Description=SSLH SSH/TLS multiplexer (VPN-Starter-Kit)
@@ -88,11 +110,7 @@ After=network.target
 
 [Service]
 Type=simple
-# This build's flags are short-form only (confirmed via `sslh --help` on a
-# live Ubuntu 22.04 box: 1.20-1+deb11u1build0.22.04.1) -- no --foreground,
-# no --config. -F takes the path glued directly on, no space, or sslh
-# silently falls back to its own default search paths and fails to start.
-ExecStart=${SSLH_BIN} -f -F${CFG}
+ExecStart=${SSLH_BIN} -f ${CONFIG_FLAG}
 Restart=always
 RestartSec=3
 
