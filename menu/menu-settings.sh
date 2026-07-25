@@ -399,6 +399,47 @@ toggle_udpcustom() {
   esac
 }
 
+# ---- [17] Clear RAM Cache ----
+# Drops the kernel's page/dentry/inode cache (RAM Linux is using for
+# reclaimable disk-cache, not real allocations). `free`'s "used" number
+# on most VPS panels includes this cache, so it looks like memory
+# pressure that isn't actually there. `sync` first flushes dirty pages
+# to disk so nothing written-but-not-saved is lost — dropping caches
+# never discards data, only forces the kernel to re-read/re-cache it
+# from disk next time it's needed, which is why this is safe to run
+# any time. Not available on some restricted/container kernels
+# (e.g. OpenVZ) — /proc/sys/vm/drop_caches won't exist there.
+clear_ram_cache() {
+  if [[ ! -e /proc/sys/vm/drop_caches ]]; then
+    echo "This kernel doesn't expose /proc/sys/vm/drop_caches"
+    echo "(common on OpenVZ/container-based VPS) — nothing to clear here."
+    return 1
+  fi
+
+  local before after freed
+  before="$(free -m | awk '/^Mem:/{print $3}')"
+
+  echo ">>> Syncing filesystem buffers..."
+  sync
+
+  echo ">>> Dropping page cache, dentries, and inodes..."
+  if ! echo 3 > /proc/sys/vm/drop_caches 2>/dev/null; then
+    echo "Could not write to /proc/sys/vm/drop_caches (permission denied)."
+    return 1
+  fi
+
+  after="$(free -m | awk '/^Mem:/{print $3}')"
+  freed=$(( before - after ))
+  (( freed < 0 )) && freed=0
+
+  echo ""
+  printf '%s\n' "===================================================="
+  printf "  RAM used before : %s MB\n" "$before"
+  printf "  RAM used after  : %s MB\n" "$after"
+  printf "  Freed           : %s%s MB%s\n" "$G" "$freed" "$X"
+  printf '%s\n' "===================================================="
+}
+
 while true; do
   clear
   echo ""
@@ -422,6 +463,7 @@ while true; do
   printf "  ${BL}[14]${X} Toggle HTTP & SOCKS Proxy\n"
   printf "  ${BL}[15]${X} Toggle Stunnel (SSH-over-TLS)\n"
   printf "  ${BL}[16]${X} Toggle SSH UDP Custom\n"
+  printf "  ${BL}[17]${X} Clear RAM Cache\n"
   echo ""
   printf "  ${Y}[00]${X} Main Menu\n"
   echo ""
@@ -444,6 +486,7 @@ while true; do
     14)   toggle_proxy ; pause ;;
     15)   toggle_stunnel ; pause ;;
     16)   toggle_udpcustom ; pause ;;
+    17)   clear_ram_cache ; pause ;;
     0|00) exit 0 ;;
     *) echo "Invalid option."; sleep 1 ;;
   esac
