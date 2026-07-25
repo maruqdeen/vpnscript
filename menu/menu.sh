@@ -120,12 +120,12 @@ while true; do
   draw_header
 
   # two-column menu
-  printf "  ${B}[1]${X} SSH / DNS Menu       ${B}[6]${X}  Settings\n"
-  printf "  ${B}[2]${X} VMess Menu           ${B}[7]${X}  Running Service\n"
-  printf "  ${B}[3]${X} VLESS Menu           ${B}[8]${X}  Bot & Api Setup\n"
-  printf "  ${B}[4]${X} Trojan Menu          ${B}[9]${X}  Security Mgt\n"
-  printf "  ${B}[5]${X} Wireguard Menu       ${B}[10]${X} WebMin\n"
-  printf "  ${B}[11]${X} Backup               ${B}[12]${X} Uninstall\n"
+  printf "  ${B}[1]${X} Ssh|Ovpn|Dns Menu    ${B}[7]${X}  Settings\n"
+  printf "  ${B}[2]${X} VMess Menu           ${B}[8]${X}  Bot & Api Setup\n"
+  printf "  ${B}[3]${X} VLESS Menu           ${B}[9]${X}  Security Mgt\n"
+  printf "  ${B}[4]${X} Trojan Menu          ${B}[10]${X} WebMin\n"
+  printf "  ${B}[5]${X} Shadowsocks Menu     ${B}[11]${X} Backup\n"
+  printf "  ${B}[6]${X} Wireguard Menu       ${B}[12]${X} Uninstall\n"
   echo ""
   printf "  ${B}[0]${X} Exit\n"
   echo ""
@@ -151,9 +151,9 @@ while true; do
     2)  bash "$BASE/menu-xray.sh" vmess ;;
     3)  bash "$BASE/menu-xray.sh" vless ;;
     4)  bash "$BASE/menu-xray.sh" trojan ;;
-    5)  bash "$BASE/menu-wireguard.sh" ;;
-    6)  bash "$BASE/menu-settings.sh" ;;
-    7)  systemctl --no-pager --type=service | grep -E 'xray|nginx|dropbear|ws-proxy|slowdns' ; pause ;;
+    5)  bash "$BASE/menu-xray.sh" shadowsocks ;;
+    6)  bash "$BASE/menu-wireguard.sh" ;;
+    7)  bash "$BASE/menu-settings.sh" ;;
     8)  bash "$BASE/menu-bot-api.sh" ;;
     9)  bash "$BASE/menu-security.sh" ;;
     10) echo "WebMin — not built yet." ; pause ;;
