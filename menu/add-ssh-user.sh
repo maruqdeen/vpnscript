@@ -10,6 +10,7 @@ fi
 
 BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../core" && pwd)"
 source "$BASE_DIR/ssh-limits.sh"
+source "$BASE_DIR/ssh-passwords.sh"
 
 # ---- sources for the card ----
 DOMAIN_FILE="/etc/vpn-script/domain"          # saved once at install
@@ -72,6 +73,7 @@ EXPIRY_CARD=$(date -d "+${DAYS} days" +%d/%m/%y)
 useradd -M -s /bin/false -e "$EXPIRY_ISO" "$USERNAME"
 echo "${USERNAME}:${PASSWORD}" | chpasswd
 ssh_limits_set "$USERNAME" "$CONN_LIMIT" "$BW_LIMIT_MB"
+ssh_password_set "$USERNAME" "$PASSWORD"
 
 CONN_LIMIT_DISPLAY="Unlimited"; [[ "$CONN_LIMIT" -gt 0 ]] && CONN_LIMIT_DISPLAY="$CONN_LIMIT"
 BW_LIMIT_DISPLAY="Unlimited"; [[ "$BW_LIMIT_GB" -gt 0 ]] && BW_LIMIT_DISPLAY="${BW_LIMIT_GB}GB"

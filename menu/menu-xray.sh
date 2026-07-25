@@ -42,6 +42,7 @@ while true; do
   printf "  ${BL}[03]${X} Extending XRAY ${PROTO_DISPLAY} User Acc\n"
   printf "  ${BL}[04]${X} Delete XRAY ${PROTO_DISPLAY} WS User Acc\n"
   printf "  ${BL}[05]${X} Check Active User using XRAY ${PROTO_DISPLAY}\n"
+  printf "  ${BL}[06]${X} Generate Config\n"
   echo ""
   printf "  ${Y}[00]${X} Main Menu\n"
   echo ""
@@ -61,6 +62,7 @@ while true; do
       esac
       pause ;;
     5|05) bash "$BASE/check-xray-user.sh" "$PROTO" ; pause ;;
+    6|06) bash "$BASE/generate-xray-config.sh" "$PROTO" ; pause ;;
 
     0|00) exit 0 ;;
     *) echo "Invalid option."; sleep 1 ;;

@@ -15,6 +15,7 @@ fi
 source "$BASE/lib-ssh-users.sh"
 source "$BASE/../core/ssh-limits.sh"
 source "$BASE/../core/lock-reasons.sh"
+source "$BASE/../core/ssh-passwords.sh"
 
 delete_xray() {
   local proto="$1"
@@ -77,6 +78,7 @@ delete_ssh() {
   userdel "$NAME"
   ssh_limits_remove "$NAME"
   lock_reason_clear "$NAME"
+  ssh_password_remove "$NAME"
   echo "Deleted SSH/SlowDNS user '$NAME'."
 }
 

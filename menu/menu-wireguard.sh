@@ -35,6 +35,7 @@ while true; do
   printf "  ${BL}[03]${X} Delete Wireguard Acc\n"
   printf "  ${BL}[04]${X} List Wireguard Acc\n"
   printf "  ${BL}[05]${X} Check Active Wireguard User\n"
+  printf "  ${BL}[06]${X} Generate Config\n"
   echo ""
   printf "  ${Y}[00]${X} Main Menu\n"
   echo ""
@@ -46,6 +47,7 @@ while true; do
     3|03) bash "$BASE/del-wireguard-user.sh" ; pause ;;
     4|04) bash "$BASE/list-wireguard-user.sh" ; pause ;;
     5|05) bash "$BASE/check-wireguard-user.sh" ; pause ;;
+    6|06) bash "$BASE/generate-wireguard-config.sh" ; pause ;;
     0|00) exit 0 ;;
     *) echo "Invalid option."; sleep 1 ;;
   esac

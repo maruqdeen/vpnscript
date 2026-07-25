@@ -36,6 +36,7 @@ while true; do
   printf "  ${BL}[06]${X} List created User Acc\n"
   printf "  ${BL}[07]${X} Set up Autokill Multi Login\n"
   printf "  ${BL}[08]${X} Check Locked Users\n"
+  printf "  ${BL}[09]${X} Generate Config\n"
   echo ""
   printf "  ${Y}[00]${X} Main Menu\n"
   echo ""
@@ -50,6 +51,7 @@ while true; do
     6|06) bash "$BASE/list-users.sh" ; pause ;;
     7|07) bash "$BASE/autokill-setup.sh" ; pause ;;
     8|08) bash "$BASE/check-locked-users.sh" ; pause ;;
+    9|09) bash "$BASE/generate-ssh-config.sh" ; pause ;;
 
     0|00) exit 0 ;;
     *) echo "Invalid option."; sleep 1 ;;
