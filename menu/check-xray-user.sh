@@ -1,16 +1,16 @@
 #!/bin/bash
 # VPN-Starter-Kit :: menu/check-xray-user.sh
-# Shows every Xray user for a given protocol (vmess/vless/trojan) with a
-# session count. Xray has no per-connection OS process to count (unlike
-# SSH's Dropbear PIDs), and its WS/gRPC inbounds sit behind nginx on
-# loopback, so the source IP in Xray's own access log is always
-# 127.0.0.1 (nginx) — counting distinct client IPs, the SSH approach,
-# doesn't work here. Instead this counts "accepted" access-log lines
-# carrying that user's email tag within the last 60s (matches nginx's
-# WS idle timeout): each open WS/gRPC stream logs its own accepted line,
-# so this approximates concurrent sessions. Best-effort, not a verified
-# distinct-device count.
-# Usage: check-xray-user.sh <vmess|vless|trojan>
+# Shows every Xray user for a given protocol (vmess/vless/trojan/
+# shadowsocks) with a session count. Xray has no per-connection OS
+# process to count (unlike SSH's Dropbear PIDs), and its WS/gRPC
+# inbounds sit behind nginx on loopback, so the source IP in Xray's own
+# access log is always 127.0.0.1 (nginx) — counting distinct client
+# IPs, the SSH approach, doesn't work here. Instead this counts
+# "accepted" access-log lines carrying that user's email tag within
+# the last 60s (matches nginx's WS idle timeout): each open WS/gRPC
+# stream logs its own accepted line, so this approximates concurrent
+# sessions. Best-effort, not a verified distinct-device count.
+# Usage: check-xray-user.sh <vmess|vless|trojan|shadowsocks>
 set -uo pipefail
 
 CONFIG="/usr/local/etc/xray/config.json"
@@ -22,8 +22,8 @@ if [[ $EUID -ne 0 ]]; then
   echo "Run as root."; exit 1
 fi
 case "$PROTO" in
-  vmess|vless|trojan) ;;
-  *) echo "Usage: check-xray-user.sh <vmess|vless|trojan>"; exit 1 ;;
+  vmess|vless|trojan|shadowsocks) ;;
+  *) echo "Usage: check-xray-user.sh <vmess|vless|trojan|shadowsocks>"; exit 1 ;;
 esac
 
 if [[ ! -f "$CONFIG" ]]; then
