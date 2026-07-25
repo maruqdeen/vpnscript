@@ -16,17 +16,12 @@ if [[ ! -f "$CONFIG" ]]; then
   exit 1
 fi
 
+# Plain SIP002 link only — see add-user.sh's ss_link for why the earlier
+# WS/gRPC+TLS query-param form doesn't actually work with real SS clients.
 ss_link() {
-  local ps="$1" add="$2" port="$3" method="$4" password="$5" net="$6" path="$7" security="$8" q userinfo
+  local ps="$1" add="$2" port="$3" method="$4" password="$5" userinfo
   userinfo="$(printf '%s' "${method}:${password}" | base64 | tr -d '\n')"
-  q="type=${net}"
-  if [[ "$net" == "grpc" ]]; then
-    q="${q}&serviceName=${path}"
-  else
-    q="${q}&host=${add}&path=$(printf '%s' "$path" | sed 's|/|%2F|g')"
-  fi
-  [[ "$security" == "tls" ]] && q="${q}&security=tls&sni=${add}"
-  printf 'ss://%s@%s:%s?%s#%s' "$userinfo" "$add" "$port" "$q" "$ps"
+  printf 'ss://%s@%s:%s#%s' "$userinfo" "$add" "$port" "$ps"
 }
 
 # pick a remarks tag that isn't already in use, e.g. "trial5980"
@@ -62,9 +57,7 @@ systemctl restart xray
 HOSTNAME_VAL="$(cat "$DOMAIN_FILE" 2>/dev/null)"
 [[ -z "$HOSTNAME_VAL" ]] && HOSTNAME_VAL="$(curl -s https://api.ipify.org || hostname -I | awk '{print $1}')"
 
-LINK_TLS="$(ss_link "$USERNAME" "$HOSTNAME_VAL" "443" "aes-256-gcm" "$UUID" "ws" "/ss" "tls")"
-LINK_PLAIN="$(ss_link "$USERNAME" "$HOSTNAME_VAL" "80" "aes-256-gcm" "$UUID" "ws" "/ss" "none")"
-LINK_GRPC="$(ss_link "$USERNAME" "$HOSTNAME_VAL" "443" "aes-256-gcm" "$UUID" "grpc" "ss-grpc" "tls")"
+LINK="$(ss_link "$USERNAME" "$HOSTNAME_VAL" "8388" "aes-256-gcm" "$UUID")"
 
 cat <<CARD
 ====================================
@@ -72,20 +65,11 @@ cat <<CARD
 ====================================
 Remarks       : ${USERNAME}
 Domain        : ${HOSTNAME_VAL}
-Port TLS      : 443
-Port none TLS : 80
-Port GRPC     : 443
+Port          : 8388
 Method        : aes-256-gcm
 password      : ${UUID}
-Network       : ws
-Path          : /ss
-ServiceName   : ss-grpc
 ====================================
-Link TLS      : ${LINK_TLS}
-====================================
-Link none TLS : ${LINK_PLAIN}
-====================================
-Link GRPC     : ${LINK_GRPC}
+Link          : ${LINK}
 ====================================
 Expired On    : ${EXPIRY}
 ====================================

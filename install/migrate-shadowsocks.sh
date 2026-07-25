@@ -1,14 +1,16 @@
 #!/bin/bash
 # VPN-Starter-Kit :: install/migrate-shadowsocks.sh
-# One-time, idempotent fix for servers installed before Shadowsocks
-# support existed (or that ran remove-shadowsocks.sh previously). Adds
-# ss-ws (10007) and ss-grpc (10008) inbounds to your LIVE Xray config
-# without touching any existing inbound — nothing to carry over, since
-# any prior Shadowsocks clients were already removed. Also refreshes
-# nginx's vpn.conf (no per-user state lives there, so a straight
-# overwrite is safe) for the new /ss and /ss-grpc routes (both plain
-# 80/8080 and TLS 443, same as vmess/vless — unlike Trojan, Shadowsocks
-# has no TLS-only constraint).
+# Fixes servers running the earlier (broken) Shadowsocks-over-WS/gRPC
+# setup: real ss:// clients (incl. v2rayNG) ignore transport query params
+# per the SIP002 spec and connect with plain Shadowsocks straight to the
+# port, which nginx then rejects — "Fail to detect internet connection:
+# EOF". This migration removes the old ss-ws/ss-grpc inbounds (10007/
+# 10008) and their nginx /ss + /ss-grpc routes, and replaces them with a
+# single Shadowsocks inbound listening directly and publicly on 8388 —
+# no nginx involved, a plain ss://method:password@host:8388#tag link that
+# every Shadowsocks client can import. Any accounts already created under
+# the old setup are carried over onto the new inbound, not lost.
+# Idempotent: safe to run again on a server already migrated.
 # Usage: wget -qO- https://raw.githubusercontent.com/maruqdeen/vpnscript/main/install/migrate-shadowsocks.sh | sudo bash
 set -euo pipefail
 
@@ -19,7 +21,7 @@ fi
 CONFIG="/usr/local/etc/xray/config.json"
 [[ -f "$CONFIG" ]] || { echo "Xray config not found at $CONFIG"; exit 1; }
 
-echo ">>> Updating nginx (adds /ss + /ss-grpc routes)..."
+echo ">>> Updating nginx (drops the old /ss + /ss-grpc routes)..."
 TMP_NGINX="$(mktemp)"
 wget -qO "$TMP_NGINX" \
   https://raw.githubusercontent.com/maruqdeen/vpnscript/main/core/nginx.conf \
@@ -28,37 +30,20 @@ install -m 644 "$TMP_NGINX" /etc/nginx/conf.d/vpn.conf
 rm -f "$TMP_NGINX"
 nginx -t && systemctl reload nginx
 
-echo ">>> Adding ss-ws + ss-grpc inbounds to Xray config (existing users untouched)..."
-if jq -e '.inbounds[] | select(.tag=="ss-ws")' "$CONFIG" >/dev/null 2>&1; then
-  echo "    already present, skipping."
-else
-  cp "$CONFIG" "${CONFIG}.bak-$(date +%s)"
-  tmp=$(mktemp)
-  jq '
-    (.inbounds) += [
-      {
-        "tag": "ss-ws",
-        "port": 10007,
-        "listen": "127.0.0.1",
-        "protocol": "shadowsocks",
-        "settings": { "clients": [] },
-        "streamSettings": { "network": "ws", "wsSettings": { "path": "/ss" } }
-      },
-      {
-        "tag": "ss-grpc",
-        "port": 10008,
-        "listen": "127.0.0.1",
-        "protocol": "shadowsocks",
-        "settings": { "clients": [] },
-        "streamSettings": { "network": "grpc", "grpcSettings": { "serviceName": "ss-grpc" } }
-      }
-    ]
-  ' "$CONFIG" > "$tmp" && chmod 644 "$tmp" && mv "$tmp" "$CONFIG"
-  echo "    done — Shadowsocks is ready, create accounts via the Shadowsocks menu."
-fi
+echo ">>> Rebuilding the Shadowsocks inbound (direct port 8388, clients preserved)..."
+cp "$CONFIG" "${CONFIG}.bak-$(date +%s)"
+tmp=$(mktemp)
+jq '
+  ([.inbounds[] | select(.protocol=="shadowsocks") | .settings.clients[]?] | unique_by(.email)) as $clients |
+  .inbounds |= [.[] | select(.tag != "ss-ws" and .tag != "ss-grpc" and .tag != "shadowsocks")] + [{
+    "tag": "shadowsocks",
+    "port": 8388,
+    "listen": "0.0.0.0",
+    "protocol": "shadowsocks",
+    "settings": { "clients": $clients, "network": "tcp,udp" }
+  }]
+' "$CONFIG" > "$tmp" && chmod 644 "$tmp" && mv "$tmp" "$CONFIG"
 
-# Same nobody-user permission fix as the vmess/vless/trojan migrations —
-# re-asserted unconditionally, even on the "already present" path.
 echo ">>> Ensuring Xray (runs as user 'nobody') can read its config and write its logs..."
 chmod 644 "$CONFIG"
 NOBODY_GROUP="$(id -gn nobody 2>/dev/null || echo nogroup)"
@@ -71,6 +56,9 @@ else
   echo "    WARNING: xray still isn't active — check: journalctl -u xray -n 30 --no-pager"
 fi
 
+echo ""
+echo ">>> Make sure TCP+UDP port 8388 is open in your firewall (ufw/iptables),"
+echo "    since Shadowsocks is now a direct public port, not routed via nginx."
 echo ""
 echo "Migration complete. Pull the latest menu scripts too if you haven't:"
 echo "  wget -qO- https://raw.githubusercontent.com/maruqdeen/vpnscript/main/install/update.sh | sudo bash"

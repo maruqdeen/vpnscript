@@ -60,26 +60,22 @@ trojan_link() {
   printf 'trojan://%s@%s:%s?%s#%s' "$password" "$add" "$port" "$q" "$ps"
 }
 
-# ss:// share link. userinfo = base64(method:password) — standard base64,
-# not the URL-safe SIP002 variant, since this targets the same Xray/V2Ray
-# client family (v2rayNG, NekoBox) already confirmed working for the links
-# above, not shadowsocks-libev/Outline cross-compatibility. The type/host/
-# path/serviceName/security/sni query params mirror vless://'s convention
-# rather than SIP002's plugin= mechanism, since our WS/gRPC transport is
-# native Xray config on both ends, not a client-side plugin binary. If a
-# client fails to auto-import this, method+password+path still work
-# entered manually into its SS screen.
+# ss:// share link — plain SIP002 form only (base64(method:password)@host:port#tag).
+# An earlier version of this added type=/host=/path=/security=/sni= query
+# params mirroring vless://'s convention, on the assumption Shadowsocks
+# could ride the same WS/gRPC+TLS transport behind nginx as the other
+# protocols. It can't, in practice: the SIP002 spec explicitly says any
+# query param other than plugin= must be ignored, and real clients (incl.
+# v2rayNG) follow that — they silently drop those params and speak plain
+# Shadowsocks straight to host:port, which nginx then rejects (wrong
+# handshake), producing an opaque "Fail to detect internet connection:
+# EOF" with no indication why. Genuine SS-over-WS+TLS needs the separate
+# v2ray-plugin mechanism on both ends, not Xray streamSettings — out of
+# scope here, so Shadowsocks instead gets its own plain, direct port.
 ss_link() {
-  local ps="$1" add="$2" port="$3" method="$4" password="$5" net="$6" path="$7" security="$8" q userinfo
+  local ps="$1" add="$2" port="$3" method="$4" password="$5" userinfo
   userinfo="$(printf '%s' "${method}:${password}" | base64 | tr -d '\n')"
-  q="type=${net}"
-  if [[ "$net" == "grpc" ]]; then
-    q="${q}&serviceName=${path}"
-  else
-    q="${q}&host=${add}&path=$(printf '%s' "$path" | sed 's|/|%2F|g')"
-  fi
-  [[ "$security" == "tls" ]] && q="${q}&security=tls&sni=${add}"
-  printf 'ss://%s@%s:%s?%s#%s' "$userinfo" "$add" "$port" "$q" "$ps"
+  printf 'ss://%s@%s:%s#%s' "$userinfo" "$add" "$port" "$ps"
 }
 
 if [[ ! -f "$CONFIG" ]]; then
@@ -237,9 +233,7 @@ Expired On    : ${EXPIRY}
 CARD
   ;;
 shadowsocks)
-  LINK_TLS="$(ss_link "$USERNAME" "$HOSTNAME_VAL" "443" "aes-256-gcm" "$UUID" "ws" "/ss" "tls")"
-  LINK_PLAIN="$(ss_link "$USERNAME" "$HOSTNAME_VAL" "80" "aes-256-gcm" "$UUID" "ws" "/ss" "none")"
-  LINK_GRPC="$(ss_link "$USERNAME" "$HOSTNAME_VAL" "443" "aes-256-gcm" "$UUID" "grpc" "ss-grpc" "tls")"
+  LINK="$(ss_link "$USERNAME" "$HOSTNAME_VAL" "8388" "aes-256-gcm" "$UUID")"
 
   cat <<CARD
 ====================================
@@ -247,20 +241,11 @@ shadowsocks)
 ====================================
 Remarks       : ${USERNAME}
 Domain        : ${HOSTNAME_VAL}
-Port TLS      : 443
-Port none TLS : 80
-Port GRPC     : 443
+Port          : 8388
 Method        : aes-256-gcm
 password      : ${UUID}
-Network       : ws
-Path          : /ss
-ServiceName   : ss-grpc
 ====================================
-Link TLS      : ${LINK_TLS}
-====================================
-Link none TLS : ${LINK_PLAIN}
-====================================
-Link GRPC     : ${LINK_GRPC}
+Link          : ${LINK}
 ====================================
 Expired On    : ${EXPIRY}
 ====================================

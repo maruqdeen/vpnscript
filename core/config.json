@@ -98,29 +98,13 @@
       }
     },
     {
-      "tag": "ss-ws",
-      "port": 10007,
-      "listen": "127.0.0.1",
+      "tag": "shadowsocks",
+      "port": 8388,
+      "listen": "0.0.0.0",
       "protocol": "shadowsocks",
       "settings": {
-        "clients": []
-      },
-      "streamSettings": {
-        "network": "ws",
-        "wsSettings": { "path": "/ss" }
-      }
-    },
-    {
-      "tag": "ss-grpc",
-      "port": 10008,
-      "listen": "127.0.0.1",
-      "protocol": "shadowsocks",
-      "settings": {
-        "clients": []
-      },
-      "streamSettings": {
-        "network": "grpc",
-        "grpcSettings": { "serviceName": "ss-grpc" }
+        "clients": [],
+        "network": "tcp,udp"
       }
     }
   ],
