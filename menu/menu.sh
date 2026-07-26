@@ -123,7 +123,7 @@ while true; do
   printf "  ${B}[1]${X} Ssh|Ovpn|Dns Menu    ${B}[7]${X}  Settings\n"
   printf "  ${B}[2]${X} VMess Menu           ${B}[8]${X}  Bot & Api Setup\n"
   printf "  ${B}[3]${X} VLESS Menu           ${B}[9]${X}  Security Mgt\n"
-  printf "  ${B}[4]${X} Trojan Menu          ${B}[10]${X} WebMin\n"
+  printf "  ${B}[4]${X} Trojan Menu          ${B}[10]${X} WebGui\n"
   printf "  ${B}[5]${X} Shadowsocks Menu     ${B}[11]${X} Backup\n"
   printf "  ${B}[6]${X} Wireguard Menu       ${B}[12]${X} Uninstall\n"
   echo ""
@@ -156,7 +156,7 @@ while true; do
     7)  bash "$BASE/menu-settings.sh" ;;
     8)  bash "$BASE/menu-bot-api.sh" ;;
     9)  bash "$BASE/menu-security.sh" ;;
-    10) echo "WebMin — not built yet." ; pause ;;
+    10) bash "$BASE/menu-webgui.sh" ;;
     11) echo "Backup — not built yet." ; pause ;;
     12) bash "$INSTALL_DIR/install/uninstall.sh"
         # A completed uninstall just deleted $INSTALL_DIR out from under

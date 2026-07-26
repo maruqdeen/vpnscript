@@ -112,8 +112,10 @@ echo "    done."
 echo ">>> [8/9] Purging installed packages (this can take a minute)..."
 export DEBIAN_FRONTEND=noninteractive
 export NEEDRESTART_MODE=a
+systemctl disable --now webmin >/dev/null 2>&1 || true
 apt-get purge -y nginx nginx-common dropbear sslh haproxy stunnel4 squid squid-common \
-  dante-server wireguard wireguard-tools openvpn easy-rsa fail2ban qrencode >/dev/null 2>&1 || true
+  dante-server wireguard wireguard-tools openvpn easy-rsa fail2ban qrencode webmin usermin >/dev/null 2>&1 || true
+rm -f /etc/apt/sources.list.d/webmin*.list /etc/apt/sources.list.d/usermin*.list
 apt-get autoremove -y >/dev/null 2>&1 || true
 echo "    done."
 
