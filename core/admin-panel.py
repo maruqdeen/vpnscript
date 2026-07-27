@@ -49,6 +49,10 @@ INSTALL_DIR = "/etc/vpn-script"
 DASHBOARD_STATS_SCRIPT = os.path.join(INSTALL_DIR, "core", "dashboard-stats.sh")
 ATTEMPTS_FILE = os.path.join(INSTALL_DIR, "admin-panel-login-attempts.json")
 
+SSH_ACTIONS_SCRIPT = os.path.join(INSTALL_DIR, "core", "telegram-ssh-actions.sh")
+SSH_PANEL_ACTIONS_SCRIPT = os.path.join(INSTALL_DIR, "core", "ssh-panel-actions.sh")
+TRIAL_SSH_SCRIPT = os.path.join(INSTALL_DIR, "menu", "trial-ssh-user.sh")
+
 SESSION_COOKIE = "admin_panel_session"
 SESSION_IDLE_SECONDS = 30 * 60
 MAX_FAILED_ATTEMPTS = 5
@@ -147,6 +151,35 @@ def get_dashboard_stats():
         return None
 
 
+def run_json(cmd, extra_env=None):
+    """Run a backend script expected to print one JSON object; always
+    returns a dict with at least an "ok" key, even on failure -- callers
+    never need to handle a raised exception or malformed output."""
+    env = dict(os.environ)
+    if extra_env:
+        env.update(extra_env)
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30, env=env)
+        try:
+            return json.loads(result.stdout)
+        except json.JSONDecodeError:
+            msg = result.stdout.strip() or result.stderr.strip() or "no output"
+            return {"ok": False, "error": "bad_output", "message": msg}
+    except Exception as exc:
+        return {"ok": False, "error": "exec_failed", "message": str(exc)}
+
+
+def run_text(cmd):
+    """Run a backend script expected to print a human-readable card/message
+    (the existing Telegram-bot-facing text mode) -- used for one-shot
+    create/delete/renew actions, displayed verbatim in a <pre> block."""
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        return (result.stdout.strip() or result.stderr.strip() or "(no output)")
+    except Exception as exc:
+        return f"Error: {exc}"
+
+
 # ---- HTML shell ----
 NAV_SECTIONS = [
     ("/admin-panel/", "Dashboard"),
@@ -197,6 +230,21 @@ h2 { margin-top: 0; }
 .login-box button:hover { background: #2563eb; }
 .error { background: #3a1620; color: #f87171; padding: 10px; border-radius: 6px; margin-bottom: 12px; }
 code { background: #0f1420; padding: 2px 6px; border-radius: 4px; }
+table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+th, td { text-align: left; padding: 8px; border-bottom: 1px solid #1e2a45; font-size: 14px; }
+th { color: #8a93a6; font-weight: 600; }
+.stack-form label { display: block; margin-top: 10px; font-size: 12px; color: #8a93a6; }
+.stack-form input { width: 100%; padding: 8px; margin-top: 4px; border-radius: 6px;
+                     border: 1px solid #2a3550; background: #0f1420; color: #e4e8f1; }
+.stack-form button, form button { margin-top: 16px; padding: 8px 16px; border-radius: 6px; border: none;
+                                   background: #3b82f6; color: #fff; cursor: pointer; }
+.inline-form { display: inline-block; margin-right: 6px; }
+.inline-form input { width: 80px; padding: 4px; border-radius: 4px; border: 1px solid #2a3550;
+                      background: #0f1420; color: #e4e8f1; }
+.inline-form button { margin-top: 0; padding: 6px 10px; font-size: 13px; }
+button.danger, .inline-form button.danger { background: #dc2626; }
+.output { background: #0f1420; padding: 16px; border-radius: 8px; white-space: pre-wrap; font-size: 13px; }
+.links a { margin-right: 16px; }
 """
 
 
@@ -282,6 +330,145 @@ def render_dashboard_body(stats):
 </div></div>"""
 
 
+def render_action_result(title, output_text, back_path, back_label="Back"):
+    return f"""<h2>{html.escape(title)}</h2>
+<div class="card"><pre class="output">{html.escape(output_text)}</pre></div>
+<p><a href="{html.escape(back_path)}">&larr; {html.escape(back_label)}</a></p>"""
+
+
+def render_ssh_page():
+    result = run_json(["bash", SSH_ACTIONS_SCRIPT, "list"], extra_env={"PANEL_JSON": "1"})
+    rows = ""
+    if result.get("ok"):
+        for u in result.get("users", []):
+            uname = html.escape(u.get("username", ""))
+            lock_badge = '<span class="bad">Locked</span>' if u.get("locked") else '<span class="ok">Unlocked</span>'
+            rows += f"""<tr>
+<td>{uname}</td>
+<td>{html.escape(u.get('expiry', ''))}</td>
+<td>{html.escape(u.get('limits', '-'))}</td>
+<td>{lock_badge}</td>
+<td>
+<form method="post" action="/admin-panel/ssh/renew" class="inline-form">
+<input type="hidden" name="username" value="{uname}">
+<input type="number" name="days" placeholder="days" min="1" required>
+<button type="submit">Renew</button>
+</form>
+<form method="post" action="/admin-panel/ssh/delete" class="inline-form" onsubmit="return confirm('Delete {uname}?')">
+<input type="hidden" name="username" value="{uname}">
+<button type="submit" class="danger">Delete</button>
+</form>
+</td>
+</tr>"""
+    if not rows:
+        msg = html.escape(result.get("message", "No accounts yet.")) if not result.get("ok") else "No accounts yet."
+        rows = f'<tr><td colspan="5">{msg}</td></tr>'
+
+    return f"""<h2>SSH / DNS</h2>
+
+<div class="card">
+<h3>Create Account</h3>
+<form method="post" action="/admin-panel/ssh/create" class="stack-form">
+<label>Username</label><input type="text" name="username" required>
+<label>Password</label><input type="text" name="password" required>
+<label>Expiry (days)</label><input type="number" name="days" value="30" required>
+<label>Connection limit (0 = unlimited)</label><input type="number" name="conn_limit" value="0">
+<label>Bandwidth limit GB (0 = unlimited)</label><input type="number" name="bw_limit_gb" value="0">
+<button type="submit">Create</button>
+</form>
+<form method="post" action="/admin-panel/ssh/trial" style="margin-top:12px">
+<button type="submit">Create Trial Account (24h)</button>
+</form>
+</div>
+
+<div class="card">
+<h3>Accounts</h3>
+<table>
+<tr><th>Username</th><th>Expiry</th><th>Limits</th><th>Status</th><th>Actions</th></tr>
+{rows}
+</table>
+</div>
+
+<div class="card links">
+<a href="/admin-panel/ssh/active">Check Active Users</a>
+<a href="/admin-panel/ssh/locked">Check Locked Users</a>
+<a href="/admin-panel/ssh/autokill">Autokill Multi Login Setup</a>
+</div>"""
+
+
+def render_ssh_active_page():
+    result = run_json(["bash", SSH_PANEL_ACTIONS_SCRIPT, "login-counts"])
+    rows = ""
+    if result.get("ok"):
+        for u in result.get("users", []):
+            rows += f"<tr><td>{html.escape(u.get('username', ''))}</td><td>{int(u.get('logins', 0))}</td></tr>"
+    if not rows:
+        rows = '<tr><td colspan="2">No accounts yet.</td></tr>'
+    return f"""<h2>Check Active Users</h2>
+<div class="card"><table><tr><th>Username</th><th>Active Logins</th></tr>{rows}</table></div>
+<p><a href="/admin-panel/ssh">&larr; Back to SSH / DNS</a></p>"""
+
+
+def render_ssh_locked_page():
+    result = run_json(["bash", SSH_PANEL_ACTIONS_SCRIPT, "locked-list"])
+    rows = ""
+    if result.get("ok"):
+        for u in result.get("users", []):
+            uname = html.escape(u.get("username", ""))
+            reason = u.get("reason", "")
+            reason_label = html.escape(u.get("reason_label", ""))
+            if reason == "bandwidth":
+                action_form = f"""<form method="post" action="/admin-panel/ssh/locked/unlock" class="inline-form">
+<input type="hidden" name="username" value="{uname}">
+<input type="hidden" name="action" value="bandwidth">
+<input type="number" name="value" placeholder="extend GB" min="1" required>
+<button type="submit">Extend + Unlock</button>
+</form>"""
+            elif reason == "connection":
+                action_form = f"""<form method="post" action="/admin-panel/ssh/locked/unlock" class="inline-form">
+<input type="hidden" name="username" value="{uname}">
+<input type="hidden" name="action" value="connlimit">
+<input type="number" name="value" placeholder="new limit" min="1" required>
+<button type="submit">Set + Unlock</button>
+</form>"""
+            else:
+                action_form = f"""<form method="post" action="/admin-panel/ssh/locked/unlock" class="inline-form">
+<input type="hidden" name="username" value="{uname}">
+<input type="hidden" name="action" value="plain">
+<button type="submit">Unlock</button>
+</form>"""
+            delete_form = f"""<form method="post" action="/admin-panel/ssh/delete" class="inline-form" onsubmit="return confirm('Delete {uname}?')">
+<input type="hidden" name="username" value="{uname}">
+<button type="submit" class="danger">Delete</button>
+</form>"""
+            rows += f"<tr><td>{uname}</td><td>{reason_label}</td><td>{action_form}{delete_form}</td></tr>"
+    if not rows:
+        rows = '<tr><td colspan="3">No locked accounts.</td></tr>'
+    return f"""<h2>Check Locked Users</h2>
+<div class="card"><table><tr><th>Username</th><th>Reason</th><th>Actions</th></tr>{rows}</table></div>
+<p><a href="/admin-panel/ssh">&larr; Back to SSH / DNS</a></p>"""
+
+
+def render_ssh_autokill_page():
+    result = run_json(["bash", SSH_PANEL_ACTIONS_SCRIPT, "autokill-status"])
+    if result.get("enabled"):
+        limit = result.get("limit")
+        body_extra = f"""<p>Status: <span class="ok">Enabled</span> (limit: {int(limit)} device(s) per account)</p>
+<form method="post" action="/admin-panel/ssh/autokill/disable">
+<button type="submit" class="danger">Disable</button>
+</form>"""
+    else:
+        body_extra = """<p>Status: <span class="bad">Disabled</span></p>
+<form method="post" action="/admin-panel/ssh/autokill/enable" class="stack-form">
+<label>Max devices allowed per account</label>
+<input type="number" name="limit" value="2" min="1" required>
+<button type="submit">Enable</button>
+</form>"""
+    return f"""<h2>Autokill Multi Login Setup</h2>
+<div class="card">{body_extra}</div>
+<p><a href="/admin-panel/ssh">&larr; Back to SSH / DNS</a></p>"""
+
+
 class Handler(http.server.BaseHTTPRequestHandler):
     server_version = "VPNStarterKitAdminPanel/1.0"
 
@@ -346,6 +533,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self._handle_logout()
         if path in ("/admin-panel/", "/admin-panel"):
             return self._handle_dashboard()
+        if path == "/admin-panel/ssh":
+            return self._handle_ssh_page()
+        if path == "/admin-panel/ssh/active":
+            return self._handle_ssh_active()
+        if path == "/admin-panel/ssh/locked":
+            return self._handle_ssh_locked()
+        if path == "/admin-panel/ssh/autokill":
+            return self._handle_ssh_autokill()
         if path.startswith("/admin-panel/"):
             return self._handle_placeholder(path)
         self._send_html("<h1>404 Not Found</h1>", status=404)
@@ -356,6 +551,20 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self._handle_login_post()
         if path == "/admin-panel/logout":
             return self._handle_logout()
+        if path == "/admin-panel/ssh/create":
+            return self._handle_ssh_create()
+        if path == "/admin-panel/ssh/trial":
+            return self._handle_ssh_trial()
+        if path == "/admin-panel/ssh/delete":
+            return self._handle_ssh_delete()
+        if path == "/admin-panel/ssh/renew":
+            return self._handle_ssh_renew()
+        if path == "/admin-panel/ssh/locked/unlock":
+            return self._handle_ssh_locked_unlock()
+        if path == "/admin-panel/ssh/autokill/enable":
+            return self._handle_ssh_autokill_enable()
+        if path == "/admin-panel/ssh/autokill/disable":
+            return self._handle_ssh_autokill_disable()
         self._send_html("<h1>404 Not Found</h1>", status=404)
 
     def _handle_login_get(self):
@@ -410,6 +619,102 @@ class Handler(http.server.BaseHTTPRequestHandler):
             "(<code>menu</code> over SSH) for this section.</p>"
         )
         self._send_html(render_shell_page(label, body, path))
+
+    # ---- SSH / DNS (Phase 1) ----
+    def _form_value(self, form, name, default=""):
+        return (form.get(name) or [default])[0]
+
+    def _handle_ssh_page(self):
+        if not self._current_session():
+            return self._redirect("/admin-panel/login")
+        self._send_html(render_shell_page("SSH / DNS", render_ssh_page(), "/admin-panel/ssh"))
+
+    def _handle_ssh_create(self):
+        if not self._current_session():
+            return self._redirect("/admin-panel/login")
+        form = self._read_form_body()
+        username = self._form_value(form, "username")
+        password = self._form_value(form, "password")
+        days = self._form_value(form, "days")
+        conn_limit = self._form_value(form, "conn_limit", "0")
+        bw_limit_gb = self._form_value(form, "bw_limit_gb", "0")
+        output = run_text(
+            ["bash", SSH_ACTIONS_SCRIPT, "create", username, password, days, conn_limit, bw_limit_gb]
+        )
+        body = render_action_result("Create SSH Account", output, "/admin-panel/ssh")
+        self._send_html(render_shell_page("SSH / DNS", body, "/admin-panel/ssh"))
+
+    def _handle_ssh_trial(self):
+        if not self._current_session():
+            return self._redirect("/admin-panel/login")
+        output = run_text(["bash", TRIAL_SSH_SCRIPT])
+        body = render_action_result("Create Trial SSH Account", output, "/admin-panel/ssh")
+        self._send_html(render_shell_page("SSH / DNS", body, "/admin-panel/ssh"))
+
+    def _handle_ssh_delete(self):
+        if not self._current_session():
+            return self._redirect("/admin-panel/login")
+        form = self._read_form_body()
+        username = self._form_value(form, "username")
+        output = run_text(["bash", SSH_ACTIONS_SCRIPT, "delete", username])
+        body = render_action_result("Delete SSH Account", output, "/admin-panel/ssh")
+        self._send_html(render_shell_page("SSH / DNS", body, "/admin-panel/ssh"))
+
+    def _handle_ssh_renew(self):
+        if not self._current_session():
+            return self._redirect("/admin-panel/login")
+        form = self._read_form_body()
+        username = self._form_value(form, "username")
+        days = self._form_value(form, "days")
+        output = run_text(["bash", SSH_ACTIONS_SCRIPT, "renew", username, days])
+        body = render_action_result("Renew SSH Account", output, "/admin-panel/ssh")
+        self._send_html(render_shell_page("SSH / DNS", body, "/admin-panel/ssh"))
+
+    def _handle_ssh_active(self):
+        if not self._current_session():
+            return self._redirect("/admin-panel/login")
+        self._send_html(render_shell_page("Check Active Users", render_ssh_active_page(), "/admin-panel/ssh"))
+
+    def _handle_ssh_locked(self):
+        if not self._current_session():
+            return self._redirect("/admin-panel/login")
+        self._send_html(render_shell_page("Check Locked Users", render_ssh_locked_page(), "/admin-panel/ssh"))
+
+    def _handle_ssh_locked_unlock(self):
+        if not self._current_session():
+            return self._redirect("/admin-panel/login")
+        form = self._read_form_body()
+        username = self._form_value(form, "username")
+        action = self._form_value(form, "action")
+        value = self._form_value(form, "value")
+        if action == "bandwidth":
+            result = run_json(["bash", SSH_PANEL_ACTIONS_SCRIPT, "unlock-bandwidth", username, value])
+        elif action == "connlimit":
+            result = run_json(["bash", SSH_PANEL_ACTIONS_SCRIPT, "unlock-connlimit", username, value])
+        else:
+            result = run_json(["bash", SSH_PANEL_ACTIONS_SCRIPT, "unlock-plain", username])
+        msg = result.get("message", "Done." if result.get("ok") else "Failed.")
+        body = render_action_result("Unlock Account", msg, "/admin-panel/ssh/locked", "Back to Locked Users")
+        self._send_html(render_shell_page("Locked Users", body, "/admin-panel/ssh"))
+
+    def _handle_ssh_autokill(self):
+        if not self._current_session():
+            return self._redirect("/admin-panel/login")
+        self._send_html(render_shell_page("Autokill Setup", render_ssh_autokill_page(), "/admin-panel/ssh"))
+
+    def _handle_ssh_autokill_enable(self):
+        if not self._current_session():
+            return self._redirect("/admin-panel/login")
+        form = self._read_form_body()
+        limit = self._form_value(form, "limit", "2")
+        run_json(["bash", SSH_PANEL_ACTIONS_SCRIPT, "autokill-enable", limit])
+        self._redirect("/admin-panel/ssh/autokill")
+
+    def _handle_ssh_autokill_disable(self):
+        if not self._current_session():
+            return self._redirect("/admin-panel/login")
+        run_json(["bash", SSH_PANEL_ACTIONS_SCRIPT, "autokill-disable"])
+        self._redirect("/admin-panel/ssh/autokill")
 
 
 def main():

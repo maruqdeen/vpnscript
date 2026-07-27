@@ -108,6 +108,27 @@ MSG
 
   list)
     users="$(ssh_user_list)"
+
+    # PANEL_JSON=1: structured output for the web admin panel's account
+    # table -- set only by core/admin-panel.py, never by the Telegram
+    # bots, so their plain-text branch below is completely untouched.
+    if [[ "${PANEL_JSON:-0}" == "1" ]]; then
+      {
+        while read -r u; do
+          [[ -z "$u" ]] && continue
+          exp="$(ssh_user_expiry "$u")"
+          pstate="$(passwd -S "$u" 2>/dev/null | awk '{print $2}')"
+          locked=false; [[ "$pstate" == "L" ]] && locked=true
+          limits="$(ssh_user_limits_display "$u")"
+          printf '%s\t%s\t%s\t%s\n' "$u" "$exp" "$locked" "$limits"
+        done <<< "$users"
+      } | jq -R -s -c '
+        (split("\n") | map(select(length > 0))) as $lines |
+        {ok:true, users: [$lines[] | split("\t") | {username: .[0], expiry: .[1], locked: (.[2]=="true"), limits: .[3]}]}
+      '
+      exit 0
+    fi
+
     if [[ -z "$users" ]]; then
       echo "(no SSH accounts)"
       exit 0
