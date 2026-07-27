@@ -85,6 +85,13 @@ SETTINGS_TOGGLES = {
     "udpcustom": {"label": "SSH UDP Custom", "flag": "udpcustom.enabled", "script": "udp-custom.sh"},
 }
 
+SECURITY_TOGGLES = {
+    "fail2ban": {"label": "Fail2ban", "flag": "fail2ban.enabled", "script": "fail2ban.sh"},
+    "anti-torrent": {"label": "Anti-Torrent", "flag": "anti-torrent.enabled", "script": "anti-torrent.sh"},
+    "ddos-protection": {"label": "DDoS Protection", "flag": "ddos-protection.enabled", "script": "ddos-protection.sh"},
+    "clean-expired": {"label": "Clean All Expired User", "flag": "clean-expired.enabled", "script": "clean-expired.sh"},
+}
+
 
 def _flag_enabled(flag_name):
     return os.path.exists(os.path.join(INSTALL_DIR, flag_name))
@@ -751,6 +758,34 @@ def render_settings_page():
 </div>"""
 
 
+SECURITY_DESCRIPTIONS = {
+    "fail2ban": "OpenSSH brute-force protection. Disabled by default.",
+    "anti-torrent": "Heuristic string-match on the FORWARD chain -- VPN client traffic only. Disabled by default.",
+    "ddos-protection": "SYN cookies + generous rate limiting, tuned for this box's normal bursty multi-protocol traffic, not a hard per-IP connection cap. Disabled by default.",
+    "clean-expired": "Deletes SSH/Xray/WireGuard accounts past their expiry date, daily at 00:30. Enabled by default.",
+}
+
+
+def render_security_page():
+    cards = ""
+    for key, info in SECURITY_TOGGLES.items():
+        enabled = _flag_enabled(info["flag"])
+        badge = '<span class="ok">Enabled</span>' if enabled else '<span class="bad">Disabled</span>'
+        run_now_button = ""
+        if key == "clean-expired":
+            run_now_button = f'<form method="post" action="/admin-panel/security/{key}/run" class="inline-form"><button type="submit">Run Now</button></form>'
+        cards += f"""<div class="card">
+<h3>{html.escape(info['label'])} -- {badge}</h3>
+<p class="muted">{html.escape(SECURITY_DESCRIPTIONS.get(key, ''))}</p>
+<form method="post" action="/admin-panel/security/{key}/enable" class="inline-form"><button type="submit">Enable</button></form>
+<form method="post" action="/admin-panel/security/{key}/disable" class="inline-form"><button type="submit" class="danger">Disable</button></form>
+{run_now_button}
+</div>"""
+
+    return f"""<h2>Security Mgt</h2>
+{cards}"""
+
+
 class Handler(http.server.BaseHTTPRequestHandler):
     server_version = "VPNStarterKitAdminPanel/1.0"
 
@@ -832,6 +867,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self._handle_wireguard_active()
         if path == "/admin-panel/settings":
             return self._handle_settings_page()
+        if path == "/admin-panel/security":
+            return self._handle_security_page()
         if path.startswith("/admin-panel/"):
             return self._handle_placeholder(path)
         self._send_html("<h1>404 Not Found</h1>", status=404)
@@ -895,6 +932,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return self._handle_settings_toggle(key, "enable")
             if path == f"/admin-panel/settings/{key}/disable":
                 return self._handle_settings_toggle(key, "disable")
+        for key in SECURITY_TOGGLES:
+            if path == f"/admin-panel/security/{key}/enable":
+                return self._handle_security_toggle(key, "enable")
+            if path == f"/admin-panel/security/{key}/disable":
+                return self._handle_security_toggle(key, "disable")
+            if key == "clean-expired" and path == f"/admin-panel/security/{key}/run":
+                return self._handle_security_toggle(key, "run")
         self._send_html("<h1>404 Not Found</h1>", status=404)
 
     def _handle_login_get(self):
@@ -1238,6 +1282,21 @@ class Handler(http.server.BaseHTTPRequestHandler):
         output = run_text(["bash", os.path.join(INSTALL_DIR, "core", "ssh-engine.sh"), mode])
         body = render_action_result("SSH Tunnel Engine", output, "/admin-panel/settings")
         self._send_html(render_shell_page("Settings", body, "/admin-panel/settings"))
+
+    # ---- Security Mgt (Phase 5) ----
+    def _handle_security_page(self):
+        if not self._current_session():
+            return self._redirect("/admin-panel/login")
+        self._send_html(render_shell_page("Security Mgt", render_security_page(), "/admin-panel/security"))
+
+    def _handle_security_toggle(self, key, action):
+        if not self._current_session():
+            return self._redirect("/admin-panel/login")
+        info = SECURITY_TOGGLES[key]
+        script = os.path.join(INSTALL_DIR, "core", info["script"])
+        output = run_text(["bash", script, action])
+        body = render_action_result(info["label"], output, "/admin-panel/security")
+        self._send_html(render_shell_page("Security Mgt", body, "/admin-panel/security"))
 
 
 def main():
