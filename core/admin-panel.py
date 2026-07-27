@@ -53,6 +53,14 @@ SSH_ACTIONS_SCRIPT = os.path.join(INSTALL_DIR, "core", "telegram-ssh-actions.sh"
 SSH_PANEL_ACTIONS_SCRIPT = os.path.join(INSTALL_DIR, "core", "ssh-panel-actions.sh")
 TRIAL_SSH_SCRIPT = os.path.join(INSTALL_DIR, "menu", "trial-ssh-user.sh")
 
+XRAY_ACTIONS_SCRIPT = os.path.join(INSTALL_DIR, "core", "telegram-xray-actions.sh")
+XRAY_PROTOCOLS = {
+    "vmess": {"label": "VMess", "trial_script": "trial-vmess-user.sh"},
+    "vless": {"label": "VLESS", "trial_script": "trial-vless-user.sh"},
+    "trojan": {"label": "Trojan", "trial_script": "trial-trojan-user.sh"},
+    "shadowsocks": {"label": "Shadowsocks", "trial_script": "trial-ss-user.sh"},
+}
+
 SESSION_COOKIE = "admin_panel_session"
 SESSION_IDLE_SECONDS = 30 * 60
 MAX_FAILED_ATTEMPTS = 5
@@ -469,6 +477,56 @@ def render_ssh_autokill_page():
 <p><a href="/admin-panel/ssh">&larr; Back to SSH / DNS</a></p>"""
 
 
+def render_xray_page(proto):
+    label = XRAY_PROTOCOLS[proto]["label"]
+    result = run_json(["bash", XRAY_ACTIONS_SCRIPT, "list", proto], extra_env={"PANEL_JSON": "1"})
+    rows = ""
+    if result.get("ok"):
+        for u in result.get("users", []):
+            uname = html.escape(u.get("username", ""))
+            rows += f"""<tr>
+<td>{uname}</td>
+<td>{html.escape(u.get('expiry', ''))}</td>
+<td>
+<form method="post" action="/admin-panel/{proto}/renew" class="inline-form">
+<input type="hidden" name="username" value="{uname}">
+<input type="number" name="days" placeholder="days" min="1" required>
+<button type="submit">Renew</button>
+</form>
+<form method="post" action="/admin-panel/{proto}/delete" class="inline-form" onsubmit="return confirm('Delete {uname}?')">
+<input type="hidden" name="username" value="{uname}">
+<button type="submit" class="danger">Delete</button>
+</form>
+</td>
+</tr>"""
+    if not rows:
+        msg = html.escape(result.get("message", "No accounts yet.")) if not result.get("ok") else "No accounts yet."
+        rows = f'<tr><td colspan="3">{msg}</td></tr>'
+
+    return f"""<h2>{html.escape(label)}</h2>
+
+<div class="card">
+<h3>Create Account</h3>
+<form method="post" action="/admin-panel/{proto}/create" class="stack-form">
+<label>Username</label>
+<input type="text" name="username" required pattern="[a-zA-Z0-9-]+" title="Letters, digits, and - only (no underscore)">
+<label>Expiry (days)</label><input type="number" name="days" value="30" required>
+<button type="submit">Create</button>
+</form>
+<form method="post" action="/admin-panel/{proto}/trial" style="margin-top:12px">
+<button type="submit">Create Trial Account</button>
+</form>
+</div>
+
+<div class="card">
+<h3>Accounts</h3>
+<table>
+<tr><th>Username</th><th>Expiry</th><th>Actions</th></tr>
+{rows}
+</table>
+</div>"""
+
+
 class Handler(http.server.BaseHTTPRequestHandler):
     server_version = "VPNStarterKitAdminPanel/1.0"
 
@@ -541,6 +599,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self._handle_ssh_locked()
         if path == "/admin-panel/ssh/autokill":
             return self._handle_ssh_autokill()
+        for proto in XRAY_PROTOCOLS:
+            if path == f"/admin-panel/{proto}":
+                return self._handle_xray_page(proto)
         if path.startswith("/admin-panel/"):
             return self._handle_placeholder(path)
         self._send_html("<h1>404 Not Found</h1>", status=404)
@@ -565,6 +626,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self._handle_ssh_autokill_enable()
         if path == "/admin-panel/ssh/autokill/disable":
             return self._handle_ssh_autokill_disable()
+        for proto in XRAY_PROTOCOLS:
+            if path == f"/admin-panel/{proto}/create":
+                return self._handle_xray_create(proto)
+            if path == f"/admin-panel/{proto}/trial":
+                return self._handle_xray_trial(proto)
+            if path == f"/admin-panel/{proto}/delete":
+                return self._handle_xray_delete(proto)
+            if path == f"/admin-panel/{proto}/renew":
+                return self._handle_xray_renew(proto)
         self._send_html("<h1>404 Not Found</h1>", status=404)
 
     def _handle_login_get(self):
@@ -715,6 +785,54 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self._redirect("/admin-panel/login")
         run_json(["bash", SSH_PANEL_ACTIONS_SCRIPT, "autokill-disable"])
         self._redirect("/admin-panel/ssh/autokill")
+
+    # ---- Xray protocols: VMess/VLESS/Trojan/Shadowsocks (Phase 2) ----
+    def _handle_xray_page(self, proto):
+        if not self._current_session():
+            return self._redirect("/admin-panel/login")
+        label = XRAY_PROTOCOLS[proto]["label"]
+        self._send_html(render_shell_page(label, render_xray_page(proto), f"/admin-panel/{proto}"))
+
+    def _handle_xray_create(self, proto):
+        if not self._current_session():
+            return self._redirect("/admin-panel/login")
+        form = self._read_form_body()
+        username = self._form_value(form, "username")
+        days = self._form_value(form, "days")
+        output = run_text(["bash", XRAY_ACTIONS_SCRIPT, "create", proto, username, days])
+        label = XRAY_PROTOCOLS[proto]["label"]
+        body = render_action_result(f"Create {label} Account", output, f"/admin-panel/{proto}")
+        self._send_html(render_shell_page(label, body, f"/admin-panel/{proto}"))
+
+    def _handle_xray_trial(self, proto):
+        if not self._current_session():
+            return self._redirect("/admin-panel/login")
+        script = os.path.join(INSTALL_DIR, "menu", XRAY_PROTOCOLS[proto]["trial_script"])
+        output = run_text(["bash", script])
+        label = XRAY_PROTOCOLS[proto]["label"]
+        body = render_action_result(f"Create Trial {label} Account", output, f"/admin-panel/{proto}")
+        self._send_html(render_shell_page(label, body, f"/admin-panel/{proto}"))
+
+    def _handle_xray_delete(self, proto):
+        if not self._current_session():
+            return self._redirect("/admin-panel/login")
+        form = self._read_form_body()
+        username = self._form_value(form, "username")
+        output = run_text(["bash", XRAY_ACTIONS_SCRIPT, "delete", proto, username])
+        label = XRAY_PROTOCOLS[proto]["label"]
+        body = render_action_result(f"Delete {label} Account", output, f"/admin-panel/{proto}")
+        self._send_html(render_shell_page(label, body, f"/admin-panel/{proto}"))
+
+    def _handle_xray_renew(self, proto):
+        if not self._current_session():
+            return self._redirect("/admin-panel/login")
+        form = self._read_form_body()
+        username = self._form_value(form, "username")
+        days = self._form_value(form, "days")
+        output = run_text(["bash", XRAY_ACTIONS_SCRIPT, "renew", proto, username, days])
+        label = XRAY_PROTOCOLS[proto]["label"]
+        body = render_action_result(f"Renew {label} Account", output, f"/admin-panel/{proto}")
+        self._send_html(render_shell_page(label, body, f"/admin-panel/{proto}"))
 
 
 def main():

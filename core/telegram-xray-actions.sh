@@ -1,10 +1,16 @@
 #!/bin/bash
 # VPN-Starter-Kit :: core/telegram-xray-actions.sh
-# Non-interactive Xray (VMess/VLESS/Trojan) account creation for the
-# Telegram User Bot to shell out to. Mirrors add-user.sh's actual UUID/
-# config/link-building logic, but takes plain CLI args instead of
-# `read -rp` prompts, and prints plain text instead of an ANSI card.
-# Usage: telegram-xray-actions.sh create <vmess|vless|trojan> <username> <days>
+# Non-interactive Xray (VMess/VLESS/Trojan/Shadowsocks) account actions
+# for the Telegram User Bot and the web admin panel to shell out to.
+# Mirrors add-user.sh's actual UUID/config/link-building logic, but takes
+# plain CLI args instead of `read -rp` prompts, and prints plain text
+# suitable for relaying back as a Telegram message rather than an
+# ANSI card (unless PANEL_JSON=1, see the `list` action).
+# Usage:
+#   telegram-xray-actions.sh create <vless|vmess|trojan|shadowsocks> <username> <days>
+#   telegram-xray-actions.sh list <vless|vmess|trojan|shadowsocks>
+#   telegram-xray-actions.sh delete <vless|vmess|trojan|shadowsocks> <username>
+#   telegram-xray-actions.sh renew <vless|vmess|trojan|shadowsocks> <username> <days>
 set -uo pipefail
 
 if [[ $EUID -ne 0 ]]; then echo "Run as root."; exit 1; fi
@@ -12,36 +18,8 @@ if [[ $EUID -ne 0 ]]; then echo "Run as root."; exit 1; fi
 CONFIG="/usr/local/etc/xray/config.json"
 DOMAIN_FILE="/etc/vpn-script/domain"
 
-vmess_link() {
-  local ps="$1" add="$2" port="$3" id="$4" net="$5" path="$6" tls="$7" json
-  json=$(printf '{"v":"2","ps":"%s","add":"%s","port":"%s","id":"%s","aid":"0","scy":"auto","net":"%s","type":"none","host":"%s","path":"%s","tls":"%s","sni":"%s"}' \
-    "$ps" "$add" "$port" "$id" "$net" "$add" "$path" "$tls" "$add")
-  printf 'vmess://%s' "$(printf '%s' "$json" | base64 | tr -d '\n')"
-}
-
-vless_link() {
-  local ps="$1" add="$2" port="$3" id="$4" net="$5" path="$6" security="$7" q
-  q="encryption=none&security=${security}&type=${net}"
-  if [[ "$net" == "grpc" ]]; then
-    q="${q}&serviceName=${path}"
-  else
-    q="${q}&host=${add}&path=$(printf '%s' "$path" | sed 's|/|%2F|g')"
-  fi
-  [[ "$security" == "tls" ]] && q="${q}&sni=${add}"
-  printf 'vless://%s@%s:%s?%s#%s' "$id" "$add" "$port" "$q" "$ps"
-}
-
-trojan_link() {
-  local ps="$1" add="$2" port="$3" password="$4" net="$5" path="$6" q
-  q="security=tls&type=${net}"
-  if [[ "$net" == "grpc" ]]; then
-    q="${q}&serviceName=${path}"
-  else
-    q="${q}&host=${add}&path=$(printf '%s' "$path" | sed 's|/|%2F|g')"
-  fi
-  q="${q}&sni=${add}"
-  printf 'trojan://%s@%s:%s?%s#%s' "$password" "$add" "$port" "$q" "$ps"
-}
+BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$BASE_DIR/xray-links.sh"
 
 ACTION="${1:-}"
 [[ $# -gt 0 ]] && shift
@@ -50,11 +28,11 @@ case "$ACTION" in
   create)
     PROTOCOL="${1:-}"; USERNAME="${2:-}"; DAYS="${3:-}"
     case "$PROTOCOL" in
-      vless|vmess|trojan) ;;
-      *) echo "Usage: create <vless|vmess|trojan> <username> <days>"; exit 1 ;;
+      vless|vmess|trojan|shadowsocks) ;;
+      *) echo "Usage: create <vless|vmess|trojan|shadowsocks> <username> <days>"; exit 1 ;;
     esac
     if [[ -z "$USERNAME" || -z "$DAYS" ]]; then
-      echo "Usage: create <vless|vmess|trojan> <username> <days>"; exit 1
+      echo "Usage: create <vless|vmess|trojan|shadowsocks> <username> <days>"; exit 1
     fi
     # no underscore: EMAIL_TAG splits on "_" to recover the username later,
     # so one in the username itself would corrupt that split.
@@ -76,9 +54,10 @@ case "$ACTION" in
     EMAIL_TAG="${USERNAME}_${EXPIRY}"
 
     case "$PROTOCOL" in
-      vless)  CLIENT=$(jq -n --arg id "$UUID" --arg email "$EMAIL_TAG" '{id:$id, email:$email}') ;;
-      vmess)  CLIENT=$(jq -n --arg id "$UUID" --arg email "$EMAIL_TAG" '{id:$id, alterId:0, email:$email}') ;;
-      trojan) CLIENT=$(jq -n --arg password "$UUID" --arg email "$EMAIL_TAG" '{password:$password, email:$email}') ;;
+      vless)       CLIENT=$(jq -n --arg id "$UUID" --arg email "$EMAIL_TAG" '{id:$id, email:$email}') ;;
+      vmess)       CLIENT=$(jq -n --arg id "$UUID" --arg email "$EMAIL_TAG" '{id:$id, alterId:0, email:$email}') ;;
+      trojan)      CLIENT=$(jq -n --arg password "$UUID" --arg email "$EMAIL_TAG" '{password:$password, email:$email}') ;;
+      shadowsocks) CLIENT=$(jq -n --arg method "aes-256-gcm" --arg password "$UUID" --arg email "$EMAIL_TAG" '{method:$method, password:$password, email:$email}') ;;
     esac
 
     tmp=$(mktemp)
@@ -175,10 +154,128 @@ Expired On    : ${EXPIRY}
 ====================================
 MSG
       ;;
+    shadowsocks)
+      LINK="$(ss_link "$USERNAME" "$HOSTNAME_VAL" "8388" "aes-256-gcm" "$UUID")"
+      cat <<MSG
+====================================
+   Xray/Shadowsocks Account
+====================================
+Remarks       : ${USERNAME}
+Domain        : ${HOSTNAME_VAL}
+Port          : 8388
+Method        : aes-256-gcm
+password      : ${UUID}
+====================================
+Link          : ${LINK}
+====================================
+Expired On    : ${EXPIRY}
+====================================
+MSG
+      ;;
     esac
     ;;
+
+  list)
+    PROTOCOL="${1:-}"
+    case "$PROTOCOL" in
+      vless|vmess|trojan|shadowsocks) ;;
+      *) echo "Usage: list <vless|vmess|trojan|shadowsocks>"; exit 1 ;;
+    esac
+    if [[ ! -f "$CONFIG" ]]; then echo "Error: Xray config not found."; exit 1; fi
+
+    # vmess/vless/trojan each have a WS + gRPC inbound sharing one client
+    # list, so listing raw clients across .inbounds[] double-lists every
+    # account; dedupe by email first. Shadowsocks has a single inbound,
+    # so unique[] here is a harmless no-op for it.
+    mapfile -t USERS < <(jq -r --arg p "$PROTOCOL" '
+      [.inbounds[] | select(.protocol==$p) | .settings.clients[].email] | unique[]
+    ' "$CONFIG" 2>/dev/null)
+
+    if [[ "${PANEL_JSON:-0}" == "1" ]]; then
+      {
+        for u in "${USERS[@]}"; do
+          [[ -z "$u" ]] && continue
+          printf '%s\t%s\n' "${u%%_*}" "${u#*_}"
+        done
+      } | jq -R -s -c '
+        (split("\n") | map(select(length > 0))) as $lines |
+        {ok:true, users: [$lines[] | split("\t") | {username: .[0], expiry: .[1]}]}
+      '
+      exit 0
+    fi
+
+    if [[ ${#USERS[@]} -eq 0 ]]; then
+      echo "(no $PROTOCOL accounts)"
+      exit 0
+    fi
+    echo "$PROTOCOL accounts:"
+    for u in "${USERS[@]}"; do
+      [[ -z "$u" ]] && continue
+      echo "- ${u%%_*}  (expires ${u#*_})"
+    done
+    ;;
+
+  delete)
+    PROTOCOL="${1:-}"; USERNAME="${2:-}"
+    case "$PROTOCOL" in
+      vless|vmess|trojan|shadowsocks) ;;
+      *) echo "Usage: delete <vless|vmess|trojan|shadowsocks> <username>"; exit 1 ;;
+    esac
+    if [[ -z "$USERNAME" ]]; then echo "Usage: delete <vless|vmess|trojan|shadowsocks> <username>"; exit 1; fi
+    if [[ ! -f "$CONFIG" ]]; then echo "Error: Xray config not found."; exit 1; fi
+
+    MATCH="$(jq -r --arg p "$PROTOCOL" --arg name "$USERNAME" '
+      [.inbounds[] | select(.protocol==$p) | .settings.clients[].email]
+      | unique[] | select(split("_")[0] == $name)
+    ' "$CONFIG" 2>/dev/null | head -n1)"
+    if [[ -z "$MATCH" ]]; then
+      echo "No $PROTOCOL user named '$USERNAME'."; exit 1
+    fi
+
+    tmp=$(mktemp)
+    jq --arg p "$PROTOCOL" --arg email "$MATCH" '
+      (.inbounds[] | select(.protocol==$p) | .settings.clients) |= map(select(.email != $email))
+    ' "$CONFIG" > "$tmp" && chmod 644 "$tmp" && mv "$tmp" "$CONFIG"
+
+    systemctl restart xray
+    echo "Deleted $PROTOCOL user '${USERNAME}'."
+    ;;
+
+  renew)
+    PROTOCOL="${1:-}"; USERNAME="${2:-}"; DAYS="${3:-}"
+    case "$PROTOCOL" in
+      vless|vmess|trojan|shadowsocks) ;;
+      *) echo "Usage: renew <vless|vmess|trojan|shadowsocks> <username> <days>"; exit 1 ;;
+    esac
+    if [[ -z "$USERNAME" || -z "$DAYS" ]]; then
+      echo "Usage: renew <vless|vmess|trojan|shadowsocks> <username> <days>"; exit 1
+    fi
+    if ! [[ "$DAYS" =~ ^[0-9]+$ ]]; then echo "Days must be a number."; exit 1; fi
+    if [[ ! -f "$CONFIG" ]]; then echo "Error: Xray config not found."; exit 1; fi
+
+    MATCH="$(jq -r --arg p "$PROTOCOL" --arg name "$USERNAME" '
+      [.inbounds[] | select(.protocol==$p) | .settings.clients[].email]
+      | unique[] | select(split("_")[0] == $name)
+    ' "$CONFIG" 2>/dev/null | head -n1)"
+    if [[ -z "$MATCH" ]]; then
+      echo "No $PROTOCOL user named '$USERNAME'."; exit 1
+    fi
+
+    NEW_EXP=$(date -d "+${DAYS} days" +%Y-%m-%d)
+    NEW_EMAIL="${USERNAME}_${NEW_EXP}"
+
+    tmp=$(mktemp)
+    jq --arg p "$PROTOCOL" --arg old "$MATCH" --arg new "$NEW_EMAIL" '
+      (.inbounds[] | select(.protocol==$p) | .settings.clients[]
+       | select(.email==$old) | .email) = $new
+    ' "$CONFIG" > "$tmp" && chmod 644 "$tmp" && mv "$tmp" "$CONFIG"
+
+    systemctl restart xray
+    echo "Renewed $PROTOCOL user '${USERNAME}' -> expires ${NEW_EXP}."
+    ;;
+
   *)
-    echo "Usage: telegram-xray-actions.sh create <vless|vmess|trojan> <username> <days>"
+    echo "Usage: telegram-xray-actions.sh <create|list|delete|renew> <vless|vmess|trojan|shadowsocks> ..."
     exit 1
     ;;
 esac
