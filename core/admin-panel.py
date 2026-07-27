@@ -52,6 +52,8 @@ ATTEMPTS_FILE = os.path.join(INSTALL_DIR, "admin-panel-login-attempts.json")
 SSH_ACTIONS_SCRIPT = os.path.join(INSTALL_DIR, "core", "telegram-ssh-actions.sh")
 SSH_PANEL_ACTIONS_SCRIPT = os.path.join(INSTALL_DIR, "core", "ssh-panel-actions.sh")
 TRIAL_SSH_SCRIPT = os.path.join(INSTALL_DIR, "menu", "trial-ssh-user.sh")
+GENERATE_SSH_CONFIG_SCRIPT = os.path.join(INSTALL_DIR, "menu", "generate-ssh-config.sh")
+GENERATE_XRAY_CONFIG_SCRIPT = os.path.join(INSTALL_DIR, "menu", "generate-xray-config.sh")
 
 XRAY_ACTIONS_SCRIPT = os.path.join(INSTALL_DIR, "core", "telegram-xray-actions.sh")
 XRAY_PROTOCOLS = {
@@ -357,6 +359,10 @@ def render_ssh_page():
 <td>{html.escape(u.get('limits', '-'))}</td>
 <td>{lock_badge}</td>
 <td>
+<form method="post" action="/admin-panel/ssh/generate-config" class="inline-form">
+<input type="hidden" name="username" value="{uname}">
+<button type="submit">View Config</button>
+</form>
 <form method="post" action="/admin-panel/ssh/renew" class="inline-form">
 <input type="hidden" name="username" value="{uname}">
 <input type="number" name="days" placeholder="days" min="1" required>
@@ -488,6 +494,10 @@ def render_xray_page(proto):
 <td>{uname}</td>
 <td>{html.escape(u.get('expiry', ''))}</td>
 <td>
+<form method="post" action="/admin-panel/{proto}/generate-config" class="inline-form">
+<input type="hidden" name="username" value="{uname}">
+<button type="submit">View Config</button>
+</form>
 <form method="post" action="/admin-panel/{proto}/renew" class="inline-form">
 <input type="hidden" name="username" value="{uname}">
 <input type="number" name="days" placeholder="days" min="1" required>
@@ -620,6 +630,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self._handle_ssh_delete()
         if path == "/admin-panel/ssh/renew":
             return self._handle_ssh_renew()
+        if path == "/admin-panel/ssh/generate-config":
+            return self._handle_ssh_generate_config()
         if path == "/admin-panel/ssh/locked/unlock":
             return self._handle_ssh_locked_unlock()
         if path == "/admin-panel/ssh/autokill/enable":
@@ -635,6 +647,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return self._handle_xray_delete(proto)
             if path == f"/admin-panel/{proto}/renew":
                 return self._handle_xray_renew(proto)
+            if path == f"/admin-panel/{proto}/generate-config":
+                return self._handle_xray_generate_config(proto)
         self._send_html("<h1>404 Not Found</h1>", status=404)
 
     def _handle_login_get(self):
@@ -740,6 +754,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
         body = render_action_result("Renew SSH Account", output, "/admin-panel/ssh")
         self._send_html(render_shell_page("SSH / DNS", body, "/admin-panel/ssh"))
 
+    def _handle_ssh_generate_config(self):
+        if not self._current_session():
+            return self._redirect("/admin-panel/login")
+        form = self._read_form_body()
+        username = self._form_value(form, "username")
+        output = run_text(["bash", GENERATE_SSH_CONFIG_SCRIPT, username])
+        body = render_action_result("SSH Account Config", output, "/admin-panel/ssh")
+        self._send_html(render_shell_page("SSH / DNS", body, "/admin-panel/ssh"))
+
     def _handle_ssh_active(self):
         if not self._current_session():
             return self._redirect("/admin-panel/login")
@@ -832,6 +855,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
         output = run_text(["bash", XRAY_ACTIONS_SCRIPT, "renew", proto, username, days])
         label = XRAY_PROTOCOLS[proto]["label"]
         body = render_action_result(f"Renew {label} Account", output, f"/admin-panel/{proto}")
+        self._send_html(render_shell_page(label, body, f"/admin-panel/{proto}"))
+
+    def _handle_xray_generate_config(self, proto):
+        if not self._current_session():
+            return self._redirect("/admin-panel/login")
+        form = self._read_form_body()
+        username = self._form_value(form, "username")
+        output = run_text(["bash", GENERATE_XRAY_CONFIG_SCRIPT, proto, username])
+        label = XRAY_PROTOCOLS[proto]["label"]
+        body = render_action_result(f"{label} Account Config", output, f"/admin-panel/{proto}")
         self._send_html(render_shell_page(label, body, f"/admin-panel/{proto}"))
 
 

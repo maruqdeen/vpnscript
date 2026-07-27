@@ -4,6 +4,10 @@
 # card was lost) — same layout as add-ssh-user.sh. Needs core/ssh-passwords.sh
 # for the password: Linux only stores a hash, not the plaintext, so
 # add-ssh-user.sh records it there specifically so this can work.
+# Usage: generate-ssh-config.sh [username]
+#   No arg: interactive (prints the account table, then prompts) -- the
+#   bash menu's call path, unchanged.
+#   With a username arg: non-interactive, for the web admin panel.
 set -uo pipefail
 
 if [[ $EUID -ne 0 ]]; then
@@ -38,10 +42,13 @@ else
   PUBKEY="(slowdns pubkey not found)"
 fi
 
-echo ""
-print_ssh_table
-echo ""
-read -rp "Enter username to generate config for: " NAME
+NAME="${1:-}"
+if [[ -z "$NAME" ]]; then
+  echo ""
+  print_ssh_table
+  echo ""
+  read -rp "Enter username to generate config for: " NAME
+fi
 
 if [[ -z "$NAME" ]]; then echo "Empty username."; exit 1; fi
 if ! id "$NAME" >/dev/null 2>&1; then

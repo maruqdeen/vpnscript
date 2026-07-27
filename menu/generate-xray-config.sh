@@ -4,7 +4,10 @@
 # card was lost) — rebuilds the exact same links add-user.sh would, from
 # the id/password already stored in config.json (no extra persistence
 # needed here, unlike SSH's password).
-# Usage: generate-xray-config.sh <vless|vmess|trojan|shadowsocks>
+# Usage: generate-xray-config.sh <vless|vmess|trojan|shadowsocks> [username]
+#   No username: interactive (lists accounts, then prompts) -- the bash
+#   menu's call path, unchanged.
+#   With a username: non-interactive, for the web admin panel.
 set -uo pipefail
 
 CONFIG="/usr/local/etc/xray/config.json"
@@ -32,15 +35,18 @@ mapfile -t USERS < <(jq -r --arg p "$PROTOCOL" '
   [.inbounds[] | select(.protocol==$p) | .settings.clients[].email] | unique[]
 ' "$CONFIG" 2>/dev/null)
 
-echo ""
-echo "Current $PROTOCOL users:"
-if [[ ${#USERS[@]} -eq 0 ]]; then
-  echo "  (none)"; exit 1
-fi
-for u in "${USERS[@]}"; do echo "  - ${u%%_*}   (expires ${u#*_})"; done
+NAME="${2:-}"
+if [[ -z "$NAME" ]]; then
+  echo ""
+  echo "Current $PROTOCOL users:"
+  if [[ ${#USERS[@]} -eq 0 ]]; then
+    echo "  (none)"; exit 1
+  fi
+  for u in "${USERS[@]}"; do echo "  - ${u%%_*}   (expires ${u#*_})"; done
 
-echo ""
-read -rp "Enter username to generate config for: " NAME
+  echo ""
+  read -rp "Enter username to generate config for: " NAME
+fi
 
 MATCH=""
 for u in "${USERS[@]}"; do
