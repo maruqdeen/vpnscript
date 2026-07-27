@@ -58,6 +58,17 @@ if [[ -f "$EXTRACTED/core/nginx.conf" && -f /etc/nginx/conf.d/vpn.conf ]]; then
   fi
 fi
 
+ADMIN_PANEL_RESTARTED=0
+if [[ -f "$INSTALL_DIR/admin-panel.enabled" ]]; then
+  # Safe to restart unconditionally, unlike ws-proxy/ohp-proxy/dropbear/etc:
+  # it holds no live tunnel connections, just browser sessions that survive
+  # a login (session store is only lost, not corrupted, by a restart) --
+  # so it's fine for update.sh to do this automatically where the other,
+  # traffic-carrying daemons deliberately are not touched.
+  echo ">>> Restarting Admin Panel (picks up the just-refreshed code)..."
+  systemctl restart vpn-admin-panel >/dev/null 2>&1 && ADMIN_PANEL_RESTARTED=1
+fi
+
 echo ""
 echo "==================================================="
 echo " UPDATE COMPLETE"
@@ -68,6 +79,12 @@ if [[ "$NGINX_REFRESHED" -eq 1 ]]; then
 else
   echo "  nginx config untouched (nothing new to apply, or vpn.conf not found)."
 fi
+if [[ "$ADMIN_PANEL_RESTARTED" -eq 1 ]]; then
+  echo "  Admin Panel restarted -- new web routes are now live."
+fi
 echo "  xray / dropbear / slowdns config untouched."
+echo "  Other optional services (Telegram bots, HAProxy, SSLH, etc.) are"
+echo "  NOT auto-restarted -- if you changed one of those, restart it"
+echo "  yourself (Settings -> Restart All Service, or its own toggle)."
 echo "  Type  menu  to continue."
 echo "==================================================="
