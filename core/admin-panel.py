@@ -246,7 +246,6 @@ NAV_SECTIONS = [
     ("/admin-panel/settings", "Settings"),
     ("/admin-panel/security", "Security Mgt"),
     ("/admin-panel/bot-api", "Bot & Api Setup"),
-    ("/admin-panel/webgui", "WebGui"),
     ("/admin-panel/backup", "Backup"),
 ]
 
