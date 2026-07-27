@@ -56,14 +56,17 @@ for svc in haproxy sslh badvpn openvpn proxy stunnel udp-custom fail2ban anti-to
 done
 echo "    done."
 
-echo ">>> [2/9] Disconnecting Telegram bots..."
+echo ">>> [2/9] Disconnecting Telegram bots and the Admin Panel..."
 systemctl disable --now vpn-telegram-bot >/dev/null 2>&1 || true
 systemctl disable --now vpn-telegram-user-bot >/dev/null 2>&1 || true
-rm -f /etc/systemd/system/vpn-telegram-bot.service /etc/systemd/system/vpn-telegram-user-bot.service
+systemctl disable --now vpn-admin-panel >/dev/null 2>&1 || true
+rm -f /etc/systemd/system/vpn-telegram-bot.service /etc/systemd/system/vpn-telegram-user-bot.service \
+      /etc/systemd/system/vpn-admin-panel.service /etc/pam.d/vpn-admin-panel
 rm -f "$INSTALL_DIR"/telegram-bot-token "$INSTALL_DIR"/telegram-admin-id "$INSTALL_DIR"/telegram-bot-claim.json \
       "$INSTALL_DIR"/telegram-bot.enabled "$INSTALL_DIR"/telegram-user-bot-token \
       "$INSTALL_DIR"/telegram-user-bot-access.json "$INSTALL_DIR"/telegram-user-bot-cooldown.json \
-      "$INSTALL_DIR"/telegram-user-bot.enabled
+      "$INSTALL_DIR"/telegram-user-bot.enabled "$INSTALL_DIR"/admin-panel.enabled \
+      "$INSTALL_DIR"/admin-panel-login-attempts.json
 echo "    done."
 
 echo ">>> [3/9] Removing SSH/SlowDNS accounts created by this panel..."
@@ -126,9 +129,11 @@ rm -f /etc/cron.d/vpn-auto-reboot /etc/cron.d/vpn-autokill /etc/cron.d/vpn-bandw
 rm -f /etc/systemd/system/vpn-haproxy.service /etc/systemd/system/vpn-sslh.service \
       /etc/systemd/system/vpn-badvpn.service /etc/systemd/system/vpn-stunnel.service \
       /etc/systemd/system/vpn-udpcustom.service /etc/systemd/system/vpn-telegram-bot.service \
-      /etc/systemd/system/vpn-telegram-user-bot.service /etc/systemd/system/ws-proxy.service \
-      /etc/systemd/system/ohp-proxy.service /etc/systemd/system/slowdns.service \
-      /etc/systemd/system/trial-expire.service /etc/systemd/system/trial-expire.timer
+      /etc/systemd/system/vpn-telegram-user-bot.service /etc/systemd/system/vpn-admin-panel.service \
+      /etc/systemd/system/ws-proxy.service /etc/systemd/system/ohp-proxy.service \
+      /etc/systemd/system/slowdns.service /etc/systemd/system/trial-expire.service \
+      /etc/systemd/system/trial-expire.timer
+rm -f /etc/pam.d/vpn-admin-panel
 systemctl daemon-reload >/dev/null 2>&1 || true
 
 rm -f /etc/sysctl.d/99-vpn-bbr.conf /etc/sysctl.d/99-vpn-ddos.conf \

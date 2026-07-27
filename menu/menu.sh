@@ -6,7 +6,6 @@ set -uo pipefail
 
 BASE="/etc/vpn-script/menu"
 INSTALL_DIR="/etc/vpn-script"
-XRAY_CONFIG="/usr/local/etc/xray/config.json"
 
 if [[ $EUID -ne 0 ]]; then
   echo "Please run as root:  sudo menu"
@@ -14,19 +13,16 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 source "$BASE/lib-ssh-users.sh"
-source "$INSTALL_DIR/core/wireguard.sh"
-source "$INSTALL_DIR/core/bandwidth.sh"
 
 # ---- colors ----
 G=$'\e[32m'; R=$'\e[31m'; Y=$'\e[33m'; C=$'\e[36m'; B=$'\e[1m'; D=$'\e[2m'; X=$'\e[0m'
 
 pause() { read -rp $'\nPress Enter to return to menu...' _; }
 
-# ---- helpers for the header ----
-svc() {
-  # svc <unit> <label>  -> prints "Label: Active|Inactive" colored
-  local unit="$1" label="$2"
-  if systemctl is-active --quiet "$unit" 2>/dev/null; then
+# svc_fmt <label> <true|false>  -> prints "Label: Active|Inactive" colored
+svc_fmt() {
+  local label="$1" active="$2"
+  if [[ "$active" == "true" ]]; then
     printf "%s: %sActive%s" "$label" "$G" "$X"
   else
     printf "%s: %sInactive%s" "$label" "$R" "$X"
@@ -46,35 +42,26 @@ line() {
   printf '%s %s %s\n' "$(printf '=%.0s' $(seq 1 "$left"))" "$title" "$(printf '=%.0s' $(seq 1 "$right"))"
 }
 
-# count_xray <protocol> -> number of clients configured for that inbound (0 if absent)
-count_xray() {
-  # vmess/vless/trojan each have a WS + gRPC inbound sharing one client
-  # list, so counting raw clients across .inbounds[] double-counts every
-  # account; dedupe by email first.
-  jq -r --arg p "$1" '[.inbounds[]? | select(.protocol==$p) | .settings.clients[]?.email] | unique | length' \
-    "$XRAY_CONFIG" 2>/dev/null || echo 0
-}
+# Script-scope (not local) -- the main loop reuses this same snapshot for
+# the BANDWITH USAGE section right after calling draw_header, so the
+# expensive stats gathering (curl/free/top/jq/systemctl) only runs once
+# per redraw instead of twice.
+stats=""
 
 draw_header() {
   clear
 
-  # --- SERVER INFO ---
-  local uptime_str ip os ram_used ram_total cpu domain nsdomain
-  uptime_str="$(uptime -p 2>/dev/null | sed 's/^up //')"
-  [[ -z "$uptime_str" ]] && uptime_str="n/a"
-  ip="$(curl -s --max-time 3 https://api.ipify.org || hostname -I | awk '{print $1}')"
-  os="$( . /etc/os-release 2>/dev/null; echo "${PRETTY_NAME:-Unknown}" ) ( $(uname -m) )"
-  ram_total="$(free -m | awk '/^Mem:/{print $2}')"
-  ram_used="$(free -m | awk '/^Mem:/{print $3}')"
-  cpu="$(top -bn1 | awk '/Cpu\(s\)/{printf "%.0f", $2+$4}')"
-  domain="$(cat "$INSTALL_DIR/domain" 2>/dev/null)";      [[ -z "$domain" ]]   && domain="(not set)"
-  nsdomain="$(cat "$INSTALL_DIR/ns-domain" 2>/dev/null)"; [[ -z "$nsdomain" ]] && nsdomain="(not set)"
-  local reboot_status
-  if [[ -f "$INSTALL_DIR/autoreboot.enabled" ]]; then
-    reboot_status="Daily $(cat "$INSTALL_DIR/autoreboot.time" 2>/dev/null || echo '?')"
-  else
-    reboot_status="Not set"
+  stats="$(bash "$INSTALL_DIR/core/dashboard-stats.sh" 2>/dev/null)"
+  if [[ -z "$stats" ]]; then
+    echo "Error: could not load dashboard stats (core/dashboard-stats.sh)."
+    return
   fi
+
+  # --- SERVER INFO ---
+  local uptime_str ip os ram_used ram_total cpu domain nsdomain reboot_status
+  IFS=$'\t' read -r uptime_str ip os ram_used ram_total cpu domain nsdomain reboot_status < <(
+    jq -r '[.server.uptime, .server.ip, .server.os, .server.ram_used_mb, .server.ram_total_mb, .server.cpu_pct, .server.domain, .server.ns_domain, .server.reboot_status] | @tsv' <<<"$stats"
+  )
 
   line "SERVER INFO"
   echo ""
@@ -88,27 +75,31 @@ draw_header() {
   printf "Time Reboot VPS    = %s%s%s\n" "$D" "$reboot_status" "$X"
 
   # --- ACTIVE SERVICE ---
+  local svc_ssh svc_nginx svc_dropbear svc_slowdns svc_xray svc_ws svc_ohp svc_hap svc_sslh svc_badvpn svc_ovt svc_ovu svc_proxy
+  IFS=$'\t' read -r svc_ssh svc_nginx svc_dropbear svc_slowdns svc_xray svc_ws svc_ohp svc_hap svc_sslh svc_badvpn svc_ovt svc_ovu svc_proxy < <(
+    jq -r '[.services.ssh, .services.nginx, .services.dropbear, .services.slowdns, .services.xray, .services["ws-proxy"], .services["ohp-proxy"], .services["vpn-haproxy"], .services["vpn-sslh"], .services["vpn-badvpn"], .services["openvpn-tcp"], .services["openvpn-udp"], .services.proxy] | @tsv' <<<"$stats"
+  )
+
   echo ""
   line "ACTIVE SERVICE"
   echo ""
-  printf "  %s | %s | %s\n" "$(svc ssh SSH)" "$(svc nginx Nginx)" "$(svc dropbear Dropbear)"
-  printf "  %s | %s | %s | %s\n" "$(svc slowdns Slowdns)" "$(svc xray Xray)" "$(svc ws-proxy SSH-WS)" "$(svc ohp-proxy SSH-OHP)"
-  printf "  %s | %s | %s\n" "$(svc vpn-haproxy HAProxy)" "$(svc vpn-sslh SSLH)" "$(svc vpn-badvpn BadVPN)"
-  printf "  %s | %s | %s\n" "$(svc openvpn@vpn-tcp1194 OVPN-TCP)" "$(svc openvpn@vpn-udp1194 OVPN-UDP)" "$(svc squid Proxy)"
+  printf "  %s | %s | %s\n" "$(svc_fmt SSH "$svc_ssh")" "$(svc_fmt Nginx "$svc_nginx")" "$(svc_fmt Dropbear "$svc_dropbear")"
+  printf "  %s | %s | %s | %s\n" "$(svc_fmt Slowdns "$svc_slowdns")" "$(svc_fmt Xray "$svc_xray")" "$(svc_fmt SSH-WS "$svc_ws")" "$(svc_fmt SSH-OHP "$svc_ohp")"
+  printf "  %s | %s | %s\n" "$(svc_fmt HAProxy "$svc_hap")" "$(svc_fmt SSLH "$svc_sslh")" "$(svc_fmt BadVPN "$svc_badvpn")"
+  printf "  %s | %s | %s\n" "$(svc_fmt OVPN-TCP "$svc_ovt")" "$(svc_fmt OVPN-UDP "$svc_ovu")" "$(svc_fmt Proxy "$svc_proxy")"
 
-  # --- ACTIVE ACCOUNT ---
-  local ssh_count vmess_count vless_count trojan_count wg_count
-  ssh_count="$(ssh_user_list | grep -c .)"
-  vmess_count="$(count_xray vmess)"
-  vless_count="$(count_xray vless)"
-  trojan_count="$(count_xray trojan)"
-  wg_count="$(jq 'length' "$WG_CLIENTS_JSON" 2>/dev/null || echo 0)"
+  # --- ACTIVE ACCOUNT (Shadowsocks now included -- this line predated
+  # the Shadowsocks rebuild and never counted it) ---
+  local acc_ssh acc_vmess acc_vless acc_trojan acc_ss acc_wg
+  IFS=$'\t' read -r acc_ssh acc_vmess acc_vless acc_trojan acc_ss acc_wg < <(
+    jq -r '[.accounts.ssh, .accounts.vmess, .accounts.vless, .accounts.trojan, .accounts.shadowsocks, .accounts.wireguard] | @tsv' <<<"$stats"
+  )
 
   echo ""
   line "ACTIVE ACCOUNT"
   echo ""
-  printf "  SSH : %s | Vmess: %s | Vless: %s | Trojan: %s | Wireguard: %s\n" \
-    "$ssh_count" "$vmess_count" "$vless_count" "$trojan_count" "$wg_count"
+  printf "  SSH : %s | Vmess: %s | Vless: %s | Trojan: %s | SS: %s | Wireguard: %s\n" \
+    "$acc_ssh" "$acc_vmess" "$acc_vless" "$acc_trojan" "$acc_ss" "$acc_wg"
 
   # --- CONTROL MANAGER ---
   echo ""
@@ -131,16 +122,19 @@ while true; do
   echo ""
 
   # --- BANDWITH USAGE (account totals: SSH + Xray + WireGuard, not
-  # whole-interface traffic — so a box with zero accounts shows 0) ---
-  bw_ensure
-  read -r bw_today_b bw_yesterday_b < <(bw_day_stats)
-  bw_month_b="$(bw_month_bytes)"
+  # whole-interface traffic — so a box with zero accounts shows 0).
+  # Reuses the same $stats snapshot draw_header just fetched above,
+  # rather than re-running dashboard-stats.sh's curl/free/top/jq/systemctl
+  # calls a second time for the same redraw. ---
+  IFS=$'\t' read -r bw_today_human bw_yesterday_human bw_month_human < <(
+    jq -r '[.bandwidth.today_human, .bandwidth.yesterday_human, .bandwidth.month_human] | @tsv' <<<"$stats"
+  )
 
   line "BANDWITH USAGE"
   echo ""
-  printf "Bandwidth  Used Today      = %s\n" "$(_bw_human "$bw_today_b")"
-  printf "Bandwidth  Used yesterday  = %s\n" "$(_bw_human "$bw_yesterday_b")"
-  printf "Total Bandwith Used in a Month = %s\n" "$(_bw_human "$bw_month_b")"
+  printf "Bandwidth  Used Today      = %s\n" "$bw_today_human"
+  printf "Bandwidth  Used yesterday  = %s\n" "$bw_yesterday_human"
+  printf "Total Bandwith Used in a Month = %s\n" "$bw_month_human"
   echo ""
 
   printf '%s\n' "==================================================="

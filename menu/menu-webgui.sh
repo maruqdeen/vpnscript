@@ -30,6 +30,14 @@ status_line() {
   fi
 }
 
+admin_panel_status_line() {
+  if [[ -f "/etc/vpn-script/admin-panel.enabled" ]]; then
+    printf "%sEnabled%s" "$G" "$X"
+  else
+    printf "%sDisabled%s" "$R" "$X"
+  fi
+}
+
 while true; do
   clear
   echo ""
@@ -37,11 +45,13 @@ while true; do
   center "WEBGUI MENU"
   printf '%s\n' "===================================================="
   echo ""
-  printf "Status : %b\n" "$(status_line)"
+  printf "Webmin Status       : %b\n" "$(status_line)"
+  printf "Admin Panel Status  : %b\n" "$(admin_panel_status_line)"
   echo ""
   printf "  ${BL}[1]${X} Install WebGui\n"
   printf "  ${BL}[2]${X} Restart WebGui\n"
   printf "  ${BL}[3]${X} Uninstall WebGui\n"
+  printf "  ${BL}[4]${X} Setup Admin Panel\n"
   echo ""
   printf "  ${Y}[0]${X} Back to Menu\n"
   echo ""
@@ -51,6 +61,19 @@ while true; do
     1) bash "$CORE_DIR/webmin.sh" install ; pause ;;
     2) bash "$CORE_DIR/webmin.sh" restart ; pause ;;
     3) bash "$CORE_DIR/webmin.sh" uninstall ; pause ;;
+    4)
+      if [[ -f "/etc/vpn-script/admin-panel.enabled" ]]; then
+        echo "Admin Panel is currently ENABLED."
+        echo "  [1] Disable"
+        echo "  [0] Back"
+        read -rp "Choose: " sub
+        case "$sub" in
+          1) bash "$CORE_DIR/admin-panel-setup.sh" disable ;;
+        esac
+      else
+        bash "$CORE_DIR/admin-panel-setup.sh" enable
+      fi
+      pause ;;
     0) exit 0 ;;
     *) echo "Invalid option."; sleep 1 ;;
   esac
