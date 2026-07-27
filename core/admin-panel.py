@@ -92,6 +92,15 @@ SECURITY_TOGGLES = {
     "clean-expired": {"label": "Clean All Expired User", "flag": "clean-expired.enabled", "script": "clean-expired.sh"},
 }
 
+TELEGRAM_BOT_ACTIONS_SCRIPT = os.path.join(INSTALL_DIR, "core", "telegram-bot-panel-actions.sh")
+ACCESS_LABELS = {
+    "ssh": "SSH/DNS",
+    "vmess": "Xray Vmess",
+    "vless": "Xray Vless",
+    "trojan": "Xray Trojan",
+    "wireguard": "Wireguard",
+}
+
 
 def _flag_enabled(flag_name):
     return os.path.exists(os.path.join(INSTALL_DIR, flag_name))
@@ -786,6 +795,103 @@ def render_security_page():
 {cards}"""
 
 
+def render_bot_api_page():
+    admin = run_json(["bash", TELEGRAM_BOT_ACTIONS_SCRIPT, "admin-status"])
+    admin_status = admin.get("status", "not_connected")
+    admin_bot_username = admin.get("bot_username") or ""
+
+    if admin_status == "connected":
+        admin_status_html = (
+            f'<span class="ok">CONNECTED</span> '
+            f'(<a href="https://t.me/{html.escape(admin_bot_username)}" target="_blank">@{html.escape(admin_bot_username)}</a>)'
+        )
+    elif admin_status == "waiting_claim":
+        code = admin.get("code", "")
+        remaining = admin.get("remaining_seconds", 0)
+        admin_status_html = (
+            f'<span class="bad">WAITING FOR CLAIM</span> '
+            f'(<a href="https://t.me/{html.escape(admin_bot_username)}" target="_blank">@{html.escape(admin_bot_username)}</a>)'
+            f'<br>Send this code within {int(remaining)}s to become admin: <code>{html.escape(code)}</code>'
+        )
+    elif admin_status == "unclaimed":
+        admin_status_html = (
+            f'<span class="bad">RUNNING BUT UNCLAIMED</span> (@{html.escape(admin_bot_username)}) '
+            "-- claim code expired, reconnect to generate a new one"
+        )
+    else:
+        admin_status_html = '<span class="bad">NOT CONNECTED</span>'
+
+    user = run_json(["bash", TELEGRAM_BOT_ACTIONS_SCRIPT, "user-status"])
+    user_status = user.get("status", "not_connected")
+    user_bot_username = user.get("bot_username") or ""
+    if user_status == "connected":
+        user_status_html = (
+            f'<span class="ok">CONNECTED</span> '
+            f'(<a href="https://t.me/{html.escape(user_bot_username)}" target="_blank">@{html.escape(user_bot_username)}</a>)'
+        )
+    else:
+        user_status_html = '<span class="bad">NOT CONNECTED</span>'
+
+    access = run_json(["bash", TELEGRAM_BOT_ACTIONS_SCRIPT, "user-access-get"])
+    access_map = access.get("access", {})
+    access_html = ""
+    for key, label in ACCESS_LABELS.items():
+        allowed = access_map.get(key, True)
+        badge = '<span class="ok">Allow</span>' if allowed else '<span class="bad">Disallow</span>'
+        access_html += f"""<div class="stat">
+<div class="label">{html.escape(label)} -- {badge}</div>
+<div class="value">
+<form method="post" action="/admin-panel/bot-api/user-bot/access/toggle" class="inline-form">
+<input type="hidden" name="key" value="{key}">
+<button type="submit">Toggle</button>
+</form>
+</div>
+</div>"""
+
+    return f"""<h2>Bot &amp; Api Setup</h2>
+
+<div class="card">
+<h3>Connect Admin Bot (Telegram)</h3>
+<p class="muted">Full remote control -- SSH account management via a claim-code-gated bot.</p>
+<p>Status: {admin_status_html}</p>
+<form method="post" action="/admin-panel/bot-api/admin-bot/connect" class="stack-form">
+<label>Bot Token (from @BotFather)</label>
+<input type="password" name="token" placeholder="123456:ABC-DEF...">
+<button type="submit">Connect / Reconnect</button>
+</form>
+<form method="post" action="/admin-panel/bot-api/admin-bot/disconnect" style="margin-top:12px">
+<button type="submit" class="danger">Disconnect</button>
+</form>
+</div>
+
+<div class="card">
+<h3>Connect User Bot (Telegram)</h3>
+<p class="muted">Open self-service bot -- anyone who messages it can create a capped 7-day trial account. Must be a DIFFERENT bot token than the Admin Bot.</p>
+<p>Status: {user_status_html}</p>
+<form method="post" action="/admin-panel/bot-api/user-bot/connect" class="stack-form">
+<label>User Bot Token (a DIFFERENT bot than your Admin Bot)</label>
+<input type="password" name="token" placeholder="123456:ABC-DEF...">
+<button type="submit">Connect / Reconnect</button>
+</form>
+<form method="post" action="/admin-panel/bot-api/user-bot/disconnect" style="margin-top:12px">
+<button type="submit" class="danger">Disconnect</button>
+</form>
+</div>
+
+<div class="card">
+<h3>Control Access (User Bot)</h3>
+<p class="muted">Which account types customers can self-create via the User Bot.</p>
+<div class="grid">
+{access_html}
+</div>
+</div>
+
+<div class="card">
+<h3>Setup Web Api</h3>
+<p class="muted">Not built yet -- a separate reseller API project, still to be decided.</p>
+</div>"""
+
+
 class Handler(http.server.BaseHTTPRequestHandler):
     server_version = "VPNStarterKitAdminPanel/1.0"
 
@@ -869,6 +975,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self._handle_settings_page()
         if path == "/admin-panel/security":
             return self._handle_security_page()
+        if path == "/admin-panel/bot-api":
+            return self._handle_bot_api_page()
         if path.startswith("/admin-panel/"):
             return self._handle_placeholder(path)
         self._send_html("<h1>404 Not Found</h1>", status=404)
@@ -939,6 +1047,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return self._handle_security_toggle(key, "disable")
             if key == "clean-expired" and path == f"/admin-panel/security/{key}/run":
                 return self._handle_security_toggle(key, "run")
+        if path == "/admin-panel/bot-api/admin-bot/connect":
+            return self._handle_bot_api_admin_connect()
+        if path == "/admin-panel/bot-api/admin-bot/disconnect":
+            return self._handle_bot_api_admin_disconnect()
+        if path == "/admin-panel/bot-api/user-bot/connect":
+            return self._handle_bot_api_user_connect()
+        if path == "/admin-panel/bot-api/user-bot/disconnect":
+            return self._handle_bot_api_user_disconnect()
+        if path == "/admin-panel/bot-api/user-bot/access/toggle":
+            return self._handle_bot_api_access_toggle()
         self._send_html("<h1>404 Not Found</h1>", status=404)
 
     def _handle_login_get(self):
@@ -1297,6 +1415,53 @@ class Handler(http.server.BaseHTTPRequestHandler):
         output = run_text(["bash", script, action])
         body = render_action_result(info["label"], output, "/admin-panel/security")
         self._send_html(render_shell_page("Security Mgt", body, "/admin-panel/security"))
+
+    # ---- Bot & Api Setup (Phase 6) ----
+    def _handle_bot_api_page(self):
+        if not self._current_session():
+            return self._redirect("/admin-panel/login")
+        self._send_html(render_shell_page("Bot & Api Setup", render_bot_api_page(), "/admin-panel/bot-api"))
+
+    def _handle_bot_api_admin_connect(self):
+        if not self._current_session():
+            return self._redirect("/admin-panel/login")
+        form = self._read_form_body()
+        token = self._form_value(form, "token")
+        output = run_text(["bash", TELEGRAM_BOT_ACTIONS_SCRIPT, "admin-connect", token])
+        body = render_action_result("Connect Admin Bot", output, "/admin-panel/bot-api")
+        self._send_html(render_shell_page("Bot & Api Setup", body, "/admin-panel/bot-api"))
+
+    def _handle_bot_api_admin_disconnect(self):
+        if not self._current_session():
+            return self._redirect("/admin-panel/login")
+        output = run_text(["bash", TELEGRAM_BOT_ACTIONS_SCRIPT, "admin-disconnect"])
+        body = render_action_result("Disconnect Admin Bot", output, "/admin-panel/bot-api")
+        self._send_html(render_shell_page("Bot & Api Setup", body, "/admin-panel/bot-api"))
+
+    def _handle_bot_api_user_connect(self):
+        if not self._current_session():
+            return self._redirect("/admin-panel/login")
+        form = self._read_form_body()
+        token = self._form_value(form, "token")
+        output = run_text(["bash", TELEGRAM_BOT_ACTIONS_SCRIPT, "user-connect", token])
+        body = render_action_result("Connect User Bot", output, "/admin-panel/bot-api")
+        self._send_html(render_shell_page("Bot & Api Setup", body, "/admin-panel/bot-api"))
+
+    def _handle_bot_api_user_disconnect(self):
+        if not self._current_session():
+            return self._redirect("/admin-panel/login")
+        output = run_text(["bash", TELEGRAM_BOT_ACTIONS_SCRIPT, "user-disconnect"])
+        body = render_action_result("Disconnect User Bot", output, "/admin-panel/bot-api")
+        self._send_html(render_shell_page("Bot & Api Setup", body, "/admin-panel/bot-api"))
+
+    def _handle_bot_api_access_toggle(self):
+        if not self._current_session():
+            return self._redirect("/admin-panel/login")
+        form = self._read_form_body()
+        key = self._form_value(form, "key")
+        output = run_text(["bash", TELEGRAM_BOT_ACTIONS_SCRIPT, "user-access-toggle", key])
+        body = render_action_result("Control Access", output, "/admin-panel/bot-api")
+        self._send_html(render_shell_page("Bot & Api Setup", body, "/admin-panel/bot-api"))
 
 
 def main():
