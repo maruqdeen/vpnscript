@@ -67,6 +67,28 @@ WG_ACTIONS_SCRIPT = os.path.join(INSTALL_DIR, "core", "telegram-wireguard-action
 CHECK_WIREGUARD_SCRIPT = os.path.join(INSTALL_DIR, "menu", "check-wireguard-user.sh")
 GENERATE_WIREGUARD_CONFIG_SCRIPT = os.path.join(INSTALL_DIR, "menu", "generate-wireguard-config.sh")
 
+SETTINGS_ACTIONS_SCRIPT = os.path.join(INSTALL_DIR, "core", "settings-panel-actions.sh")
+SETTINGS_SIMPLE_ACTIONS = {
+    "/admin-panel/settings/port-info": ("port-info", "Service Port Info"),
+    "/admin-panel/settings/speedtest": ("speedtest", "Speedtest VPS"),
+    "/admin-panel/settings/check-running": ("check-running", "Running Services"),
+    "/admin-panel/settings/restart-all": ("restart-all", "Restart All Services"),
+    "/admin-panel/settings/clear-ram-cache": ("clear-ram-cache", "Clear RAM Cache"),
+}
+SETTINGS_TOGGLES = {
+    "haproxy": {"label": "HAProxy (SSH-SSL)", "flag": "haproxy.enabled", "script": "haproxy.sh"},
+    "sslh": {"label": "SSLH Multiplex", "flag": "sslh.enabled", "script": "sslh.sh"},
+    "badvpn": {"label": "BadVPN (UDPGW)", "flag": "badvpn.enabled", "script": "badvpn.sh"},
+    "openvpn": {"label": "OpenVPN (TCP/UDP)", "flag": "openvpn.enabled", "script": "openvpn.sh"},
+    "proxy": {"label": "HTTP & SOCKS Proxy", "flag": "proxy.enabled", "script": "proxy.sh"},
+    "stunnel": {"label": "Stunnel (SSH-over-TLS)", "flag": "stunnel.enabled", "script": "stunnel.sh"},
+    "udpcustom": {"label": "SSH UDP Custom", "flag": "udpcustom.enabled", "script": "udp-custom.sh"},
+}
+
+
+def _flag_enabled(flag_name):
+    return os.path.exists(os.path.join(INSTALL_DIR, flag_name))
+
 SESSION_COOKIE = "admin_panel_session"
 SESSION_IDLE_SECONDS = 30 * 60
 MAX_FAILED_ATTEMPTS = 5
@@ -183,12 +205,14 @@ def run_json(cmd, extra_env=None):
         return {"ok": False, "error": "exec_failed", "message": str(exc)}
 
 
-def run_text(cmd):
+def run_text(cmd, input_text=None):
     """Run a backend script expected to print a human-readable card/message
     (the existing Telegram-bot-facing text mode) -- used for one-shot
-    create/delete/renew actions, displayed verbatim in a <pre> block."""
+    create/delete/renew actions, displayed verbatim in a <pre> block.
+    input_text, if given, is piped to the script's stdin (e.g. the banner
+    editor, which reads its new text that way rather than as an argv)."""
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        result = subprocess.run(cmd, input=input_text, capture_output=True, text=True, timeout=30)
         return (result.stdout.strip() or result.stderr.strip() or "(no output)")
     except Exception as exc:
         return f"Error: {exc}"
@@ -603,6 +627,130 @@ def render_wireguard_active_page():
 <p><a href="/admin-panel/wireguard">&larr; Back to WireGuard</a></p>"""
 
 
+def render_settings_page():
+    domains = run_json(["bash", SETTINGS_ACTIONS_SCRIPT, "get-domains"])
+    domain = domains.get("domain") or "(not set)"
+    ns_domain = domains.get("ns_domain") or "(not set)"
+
+    banner_text = run_text(["bash", SETTINGS_ACTIONS_SCRIPT, "get-banner"])
+    if banner_text == "(no output)":
+        banner_text = ""
+
+    autoreboot = run_json(["bash", SETTINGS_ACTIONS_SCRIPT, "autoreboot-status"])
+    ar_enabled = autoreboot.get("enabled", False)
+    ar_time = autoreboot.get("time") or "04:00"
+    ar_status_html = (
+        f'<span class="ok">Enabled</span> (daily at {html.escape(ar_time)})'
+        if ar_enabled
+        else '<span class="bad">Disabled</span>'
+    )
+
+    ssh_engine = "both"
+    try:
+        with open(os.path.join(INSTALL_DIR, "ssh-engine")) as f:
+            ssh_engine = f.read().strip() or "both"
+    except OSError:
+        pass
+
+    toggles_html = ""
+    for key, info in SETTINGS_TOGGLES.items():
+        enabled = _flag_enabled(info["flag"])
+        badge = '<span class="ok">Enabled</span>' if enabled else '<span class="bad">Disabled</span>'
+        toggles_html += f"""<div class="stat">
+<div class="label">{html.escape(info['label'])} -- {badge}</div>
+<div class="value">
+<form method="post" action="/admin-panel/settings/{key}/enable" class="inline-form"><button type="submit">Enable</button></form>
+<form method="post" action="/admin-panel/settings/{key}/disable" class="inline-form"><button type="submit" class="danger">Disable</button></form>
+</div>
+</div>"""
+
+    return f"""<h2>Settings</h2>
+
+<div class="card">
+<h3>Change Primary Domain &amp; NS Domain</h3>
+<p class="muted">Current primary domain: {html.escape(domain)} &middot; Current NS domain: {html.escape(ns_domain)}</p>
+<form method="post" action="/admin-panel/settings/domains" class="stack-form">
+<label>New primary (TLS/WS) domain (blank = keep current)</label>
+<input type="text" name="domain" placeholder="{html.escape(domain)}">
+<label>New SlowDNS NS domain (blank = keep current)</label>
+<input type="text" name="ns_domain" placeholder="{html.escape(ns_domain)}">
+<button type="submit">Save</button>
+</form>
+</div>
+
+<div class="card">
+<h3>All Service Port Info</h3>
+<form method="post" action="/admin-panel/settings/port-info"><button type="submit">View Port Info</button></form>
+</div>
+
+<div class="card">
+<h3>Change Service Port</h3>
+<p class="muted">Not built yet -- reworking nginx/ws.py ports safely on a live server is its own task.</p>
+</div>
+
+<div class="card">
+<h3>Speedtest VPS</h3>
+<form method="post" action="/admin-panel/settings/speedtest"><button type="submit">Run Speedtest</button></form>
+</div>
+
+<div class="card">
+<h3>Auto Reboot</h3>
+<p>Status: {ar_status_html}</p>
+<form method="post" action="/admin-panel/settings/autoreboot/enable" class="inline-form">
+<input type="text" name="time" value="{html.escape(ar_time)}" placeholder="HH:MM">
+<button type="submit">Enable</button>
+</form>
+<form method="post" action="/admin-panel/settings/autoreboot/disable" class="inline-form">
+<button type="submit" class="danger">Disable</button>
+</form>
+</div>
+
+<div class="card">
+<h3>Check Running Service</h3>
+<form method="post" action="/admin-panel/settings/check-running"><button type="submit">Check Running Services</button></form>
+</div>
+
+<div class="card">
+<h3>Restart All Service</h3>
+<form method="post" action="/admin-panel/settings/restart-all"><button type="submit">Restart All Services</button></form>
+</div>
+
+<div class="card">
+<h3>Change Banner</h3>
+<form method="post" action="/admin-panel/settings/banner" class="stack-form">
+<label>SSH login banner text</label>
+<textarea name="banner_text" rows="5" style="width:100%; padding:8px; border-radius:6px; border:1px solid #2a3550; background:#0f1420; color:#e4e8f1;">{html.escape(banner_text)}</textarea>
+<button type="submit">Save Banner</button>
+</form>
+</div>
+
+<div class="card">
+<h3>Optional Services</h3>
+<div class="grid">
+{toggles_html}
+</div>
+</div>
+
+<div class="card">
+<h3>SSH Tunnel Engine</h3>
+<p class="muted">Current: {html.escape(ssh_engine)} -- controls what ws.py/SlowDNS/HAProxy/SSLH forward tunnel traffic to; OpenSSH's own admin service on :22 is never stopped by this.</p>
+<form method="post" action="/admin-panel/settings/ssh-engine" class="inline-form">
+<input type="hidden" name="mode" value="dropbear"><button type="submit">Dropbear only</button>
+</form>
+<form method="post" action="/admin-panel/settings/ssh-engine" class="inline-form">
+<input type="hidden" name="mode" value="openssh"><button type="submit">OpenSSH only</button>
+</form>
+<form method="post" action="/admin-panel/settings/ssh-engine" class="inline-form">
+<input type="hidden" name="mode" value="both"><button type="submit">Both (default)</button>
+</form>
+</div>
+
+<div class="card">
+<h3>Clear RAM Cache</h3>
+<form method="post" action="/admin-panel/settings/clear-ram-cache"><button type="submit">Clear RAM Cache</button></form>
+</div>"""
+
+
 class Handler(http.server.BaseHTTPRequestHandler):
     server_version = "VPNStarterKitAdminPanel/1.0"
 
@@ -682,6 +830,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self._handle_wireguard_page()
         if path == "/admin-panel/wireguard/active":
             return self._handle_wireguard_active()
+        if path == "/admin-panel/settings":
+            return self._handle_settings_page()
         if path.startswith("/admin-panel/"):
             return self._handle_placeholder(path)
         self._send_html("<h1>404 Not Found</h1>", status=404)
@@ -727,6 +877,24 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self._handle_wireguard_renew()
         if path == "/admin-panel/wireguard/generate-config":
             return self._handle_wireguard_generate_config()
+        if path == "/admin-panel/settings/domains":
+            return self._handle_settings_domains()
+        if path == "/admin-panel/settings/banner":
+            return self._handle_settings_banner()
+        if path == "/admin-panel/settings/autoreboot/enable":
+            return self._handle_settings_autoreboot_enable()
+        if path == "/admin-panel/settings/autoreboot/disable":
+            return self._handle_settings_autoreboot_disable()
+        if path == "/admin-panel/settings/ssh-engine":
+            return self._handle_settings_ssh_engine()
+        if path in SETTINGS_SIMPLE_ACTIONS:
+            action, title = SETTINGS_SIMPLE_ACTIONS[path]
+            return self._handle_settings_simple_action(action, title)
+        for key in SETTINGS_TOGGLES:
+            if path == f"/admin-panel/settings/{key}/enable":
+                return self._handle_settings_toggle(key, "enable")
+            if path == f"/admin-panel/settings/{key}/disable":
+                return self._handle_settings_toggle(key, "disable")
         self._send_html("<h1>404 Not Found</h1>", status=404)
 
     def _handle_login_get(self):
@@ -994,6 +1162,82 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self._redirect("/admin-panel/login")
         body = render_wireguard_active_page()
         self._send_html(render_shell_page("Check Active WireGuard Users", body, "/admin-panel/wireguard"))
+
+    # ---- Settings (Phase 4) ----
+    def _handle_settings_page(self):
+        if not self._current_session():
+            return self._redirect("/admin-panel/login")
+        self._send_html(render_shell_page("Settings", render_settings_page(), "/admin-panel/settings"))
+
+    def _handle_settings_domains(self):
+        if not self._current_session():
+            return self._redirect("/admin-panel/login")
+        form = self._read_form_body()
+        domain = self._form_value(form, "domain")
+        ns_domain = self._form_value(form, "ns_domain")
+        outputs = []
+        if domain:
+            outputs.append(run_text(["bash", SETTINGS_ACTIONS_SCRIPT, "set-domain", domain]))
+        if ns_domain:
+            outputs.append(run_text(["bash", SETTINGS_ACTIONS_SCRIPT, "set-ns-domain", ns_domain]))
+        if not outputs:
+            outputs.append("Nothing changed (both fields were blank).")
+        body = render_action_result("Change Domains", "\n\n".join(outputs), "/admin-panel/settings")
+        self._send_html(render_shell_page("Settings", body, "/admin-panel/settings"))
+
+    def _handle_settings_banner(self):
+        if not self._current_session():
+            return self._redirect("/admin-panel/login")
+        form = self._read_form_body()
+        banner_text = self._form_value(form, "banner_text")
+        if not banner_text.endswith("\n"):
+            banner_text += "\n"
+        output = run_text(["bash", SETTINGS_ACTIONS_SCRIPT, "set-banner"], input_text=banner_text)
+        body = render_action_result("Change Banner", output, "/admin-panel/settings")
+        self._send_html(render_shell_page("Settings", body, "/admin-panel/settings"))
+
+    def _handle_settings_autoreboot_enable(self):
+        if not self._current_session():
+            return self._redirect("/admin-panel/login")
+        form = self._read_form_body()
+        time_val = self._form_value(form, "time", "04:00")
+        output = run_text(["bash", SETTINGS_ACTIONS_SCRIPT, "autoreboot-enable", time_val])
+        body = render_action_result("Auto Reboot", output, "/admin-panel/settings")
+        self._send_html(render_shell_page("Settings", body, "/admin-panel/settings"))
+
+    def _handle_settings_autoreboot_disable(self):
+        if not self._current_session():
+            return self._redirect("/admin-panel/login")
+        output = run_text(["bash", SETTINGS_ACTIONS_SCRIPT, "autoreboot-disable"])
+        body = render_action_result("Auto Reboot", output, "/admin-panel/settings")
+        self._send_html(render_shell_page("Settings", body, "/admin-panel/settings"))
+
+    def _handle_settings_simple_action(self, action, title):
+        if not self._current_session():
+            return self._redirect("/admin-panel/login")
+        output = run_text(["bash", SETTINGS_ACTIONS_SCRIPT, action])
+        body = render_action_result(title, output, "/admin-panel/settings")
+        self._send_html(render_shell_page("Settings", body, "/admin-panel/settings"))
+
+    def _handle_settings_toggle(self, key, action):
+        if not self._current_session():
+            return self._redirect("/admin-panel/login")
+        info = SETTINGS_TOGGLES[key]
+        script = os.path.join(INSTALL_DIR, "core", info["script"])
+        output = run_text(["bash", script, action])
+        body = render_action_result(info["label"], output, "/admin-panel/settings")
+        self._send_html(render_shell_page("Settings", body, "/admin-panel/settings"))
+
+    def _handle_settings_ssh_engine(self):
+        if not self._current_session():
+            return self._redirect("/admin-panel/login")
+        form = self._read_form_body()
+        mode = self._form_value(form, "mode", "both")
+        if mode not in ("dropbear", "openssh", "both"):
+            mode = "both"
+        output = run_text(["bash", os.path.join(INSTALL_DIR, "core", "ssh-engine.sh"), mode])
+        body = render_action_result("SSH Tunnel Engine", output, "/admin-panel/settings")
+        self._send_html(render_shell_page("Settings", body, "/admin-panel/settings"))
 
 
 def main():
