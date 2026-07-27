@@ -40,7 +40,11 @@ EOF
   sysctl --system >/dev/null 2>&1 || true
 
   if [[ ! -f "$WG_INTERFACE_CONF" ]]; then
-    echo ">>> Bootstrapping WireGuard server (first run only)..."
+    # stderr, not stdout: this is a progress message, not command output --
+    # a stdout caller expecting clean output (e.g. PANEL_JSON=1 callers in
+    # telegram-wireguard-actions.sh) would otherwise get this line spliced
+    # in front of their real result on the very first-ever WireGuard action.
+    echo ">>> Bootstrapping WireGuard server (first run only)..." >&2
     mkdir -p "$WG_DIR"
     chmod 700 "$WG_DIR"
     local iface priv pub

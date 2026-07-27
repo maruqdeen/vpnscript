@@ -1,11 +1,18 @@
 #!/bin/bash
 # VPN-Starter-Kit :: core/telegram-wireguard-actions.sh
-# Non-interactive WireGuard peer creation for the Telegram User Bot to
-# shell out to. Mirrors add-wireguard-user.sh's actual keygen/clients.json/
-# sync logic, but takes plain CLI args instead of `read -rp` prompts, and
-# prints plain text (no ANSI QR -- Telegram messages aren't a terminal;
-# QR-image delivery via sendPhoto would be a reasonable follow-up).
-# Usage: telegram-wireguard-actions.sh create <username> <days>
+# Non-interactive WireGuard peer actions for the Telegram User Bot and
+# the web admin panel to shell out to. `create` mirrors add-wireguard-
+# user.sh's actual keygen/clients.json/sync logic, `delete`/`renew`
+# mirror del-wireguard-user.sh/renew-wireguard-user.sh -- all take plain
+# CLI args instead of `read -rp` prompts, and print plain text (no ANSI
+# QR -- neither a Telegram message nor an admin-panel <pre> block is a
+# terminal; QR-image delivery via sendPhoto would be a reasonable
+# Telegram-specific follow-up).
+# Usage:
+#   telegram-wireguard-actions.sh create <username> <days>
+#   telegram-wireguard-actions.sh list
+#   telegram-wireguard-actions.sh delete <username>
+#   telegram-wireguard-actions.sh renew <username> <days>
 set -uo pipefail
 
 if [[ $EUID -ne 0 ]]; then echo "Run as root."; exit 1; fi
@@ -80,8 +87,57 @@ PersistentKeepalive = 25
 ====================================
 MSG
     ;;
+
+  list)
+    wg_ensure_server
+    if [[ "${PANEL_JSON:-0}" == "1" ]]; then
+      jq -c '{ok:true, users: [.[] | {username, expiry, address}]}' "$WG_CLIENTS_JSON" 2>/dev/null \
+        || echo '{"ok":true,"users":[]}'
+      exit 0
+    fi
+    COUNT=$(jq 'length' "$WG_CLIENTS_JSON" 2>/dev/null || echo 0)
+    if [[ "$COUNT" -eq 0 ]]; then
+      echo "(no WireGuard accounts)"
+      exit 0
+    fi
+    echo "WireGuard accounts:"
+    jq -r '.[] | "- " + .username + "  (expires " + .expiry + ", " + .address + "/32)"' "$WG_CLIENTS_JSON"
+    ;;
+
+  delete)
+    USERNAME="${1:-}"
+    if [[ -z "$USERNAME" ]]; then echo "Usage: delete <username>"; exit 1; fi
+    wg_ensure_server
+    if ! jq -e --arg n "$USERNAME" '.[] | select(.username==$n)' "$WG_CLIENTS_JSON" >/dev/null 2>&1; then
+      echo "No WireGuard peer named '$USERNAME'."; exit 1
+    fi
+    tmp=$(mktemp)
+    jq --arg n "$USERNAME" 'map(select(.username != $n))' "$WG_CLIENTS_JSON" > "$tmp" && chmod 600 "$tmp" && mv "$tmp" "$WG_CLIENTS_JSON"
+    wg_sync_peers
+    echo "Deleted WireGuard peer '${USERNAME}'."
+    ;;
+
+  renew)
+    USERNAME="${1:-}"; DAYS="${2:-}"
+    if [[ -z "$USERNAME" || -z "$DAYS" ]]; then echo "Usage: renew <username> <days>"; exit 1; fi
+    if ! [[ "$DAYS" =~ ^[0-9]+$ ]]; then echo "Days must be a number."; exit 1; fi
+    wg_ensure_server
+    if ! jq -e --arg n "$USERNAME" '.[] | select(.username==$n)' "$WG_CLIENTS_JSON" >/dev/null 2>&1; then
+      echo "No WireGuard peer named '$USERNAME'."; exit 1
+    fi
+    # Expiry is a tracked date only (WireGuard has no native expiry
+    # enforcement) -- no wg_sync_peers needed, unlike create/delete which
+    # change the actual live peer set.
+    NEW_EXP=$(date -d "+${DAYS} days" +%Y-%m-%d)
+    tmp=$(mktemp)
+    jq --arg n "$USERNAME" --arg e "$NEW_EXP" \
+      '(.[] | select(.username==$n) | .expiry) = $e' \
+      "$WG_CLIENTS_JSON" > "$tmp" && chmod 600 "$tmp" && mv "$tmp" "$WG_CLIENTS_JSON"
+    echo "Renewed WireGuard peer '${USERNAME}' -> expires ${NEW_EXP}."
+    ;;
+
   *)
-    echo "Usage: telegram-wireguard-actions.sh create <username> <days>"
+    echo "Usage: telegram-wireguard-actions.sh <create|list|delete|renew> ..."
     exit 1
     ;;
 esac

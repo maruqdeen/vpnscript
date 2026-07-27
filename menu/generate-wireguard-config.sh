@@ -4,6 +4,11 @@
 # original card was lost). Keys are already stored in clients.json (set
 # at creation time in add-wireguard-user.sh), so no extra persistence is
 # needed here, unlike SSH's password.
+# Usage: generate-wireguard-config.sh [username]
+#   No arg: interactive (lists peers, then prompts, then shows an ANSI
+#   QR code) -- the bash menu's call path, unchanged.
+#   With a username: non-interactive, for the web admin panel -- skips
+#   the QR (ANSI art means nothing in a browser <pre> block).
 set -euo pipefail
 
 CORE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../core" && pwd)"
@@ -17,16 +22,19 @@ fi
 
 wg_ensure_server
 
-COUNT=$(jq 'length' "$WG_CLIENTS_JSON" 2>/dev/null || echo 0)
-echo ""
-echo "Current Wireguard users:"
-if [[ "$COUNT" -eq 0 ]]; then
-  echo "  (none)"; exit 1
-fi
-jq -r '.[] | "  - \(.username)   (expires \(.expiry))"' "$WG_CLIENTS_JSON"
+NAME="${1:-}"
+if [[ -z "$NAME" ]]; then
+  COUNT=$(jq 'length' "$WG_CLIENTS_JSON" 2>/dev/null || echo 0)
+  echo ""
+  echo "Current Wireguard users:"
+  if [[ "$COUNT" -eq 0 ]]; then
+    echo "  (none)"; exit 1
+  fi
+  jq -r '.[] | "  - \(.username)   (expires \(.expiry))"' "$WG_CLIENTS_JSON"
 
-echo ""
-read -rp "Enter username to generate config for: " NAME
+  echo ""
+  read -rp "Enter username to generate config for: " NAME
+fi
 
 CLIENT_JSON="$(jq -c --arg u "$NAME" '[.[] | select(.username==$u)][0]' "$WG_CLIENTS_JSON")"
 if [[ -z "$CLIENT_JSON" || "$CLIENT_JSON" == "null" ]]; then
@@ -70,6 +78,10 @@ ${CLIENT_CONF}
 ====================================
 CARD
 
-echo ""
-echo "Scan to import:"
-echo "$CLIENT_CONF" | qrencode -t ansiutf8
+# Only when called interactively (no username arg) -- an ANSI QR is
+# terminal-only art, meaningless (and messy) piped into a web <pre> block.
+if [[ -z "${1:-}" ]]; then
+  echo ""
+  echo "Scan to import:"
+  echo "$CLIENT_CONF" | qrencode -t ansiutf8
+fi

@@ -63,6 +63,10 @@ XRAY_PROTOCOLS = {
     "shadowsocks": {"label": "Shadowsocks", "trial_script": "trial-ss-user.sh"},
 }
 
+WG_ACTIONS_SCRIPT = os.path.join(INSTALL_DIR, "core", "telegram-wireguard-actions.sh")
+CHECK_WIREGUARD_SCRIPT = os.path.join(INSTALL_DIR, "menu", "check-wireguard-user.sh")
+GENERATE_WIREGUARD_CONFIG_SCRIPT = os.path.join(INSTALL_DIR, "menu", "generate-wireguard-config.sh")
+
 SESSION_COOKIE = "admin_panel_session"
 SESSION_IDLE_SECONDS = 30 * 60
 MAX_FAILED_ATTEMPTS = 5
@@ -537,6 +541,68 @@ def render_xray_page(proto):
 </div>"""
 
 
+def render_wireguard_page():
+    result = run_json(["bash", WG_ACTIONS_SCRIPT, "list"], extra_env={"PANEL_JSON": "1"})
+    rows = ""
+    if result.get("ok"):
+        for u in result.get("users", []):
+            uname = html.escape(u.get("username", ""))
+            rows += f"""<tr>
+<td>{uname}</td>
+<td>{html.escape(u.get('address', ''))}</td>
+<td>{html.escape(u.get('expiry', ''))}</td>
+<td>
+<form method="post" action="/admin-panel/wireguard/generate-config" class="inline-form">
+<input type="hidden" name="username" value="{uname}">
+<button type="submit">View Config</button>
+</form>
+<form method="post" action="/admin-panel/wireguard/renew" class="inline-form">
+<input type="hidden" name="username" value="{uname}">
+<input type="number" name="days" placeholder="days" min="1" required>
+<button type="submit">Renew</button>
+</form>
+<form method="post" action="/admin-panel/wireguard/delete" class="inline-form" onsubmit="return confirm('Delete {uname}?')">
+<input type="hidden" name="username" value="{uname}">
+<button type="submit" class="danger">Delete</button>
+</form>
+</td>
+</tr>"""
+    if not rows:
+        msg = html.escape(result.get("message", "No accounts yet.")) if not result.get("ok") else "No accounts yet."
+        rows = f'<tr><td colspan="4">{msg}</td></tr>'
+
+    return f"""<h2>WireGuard</h2>
+
+<div class="card">
+<h3>Create Account</h3>
+<form method="post" action="/admin-panel/wireguard/create" class="stack-form">
+<label>Username</label>
+<input type="text" name="username" required pattern="[a-zA-Z0-9_-]+" title="Letters, digits, - and _ only">
+<label>Expiry (days)</label><input type="number" name="days" value="30" required>
+<button type="submit">Create</button>
+</form>
+</div>
+
+<div class="card">
+<h3>Accounts</h3>
+<table>
+<tr><th>Username</th><th>Address</th><th>Expiry</th><th>Actions</th></tr>
+{rows}
+</table>
+</div>
+
+<div class="card links">
+<a href="/admin-panel/wireguard/active">Check Active Users</a>
+</div>"""
+
+
+def render_wireguard_active_page():
+    output = run_text(["bash", CHECK_WIREGUARD_SCRIPT])
+    return f"""<h2>Check Active WireGuard Users</h2>
+<div class="card"><pre class="output">{html.escape(output)}</pre></div>
+<p><a href="/admin-panel/wireguard">&larr; Back to WireGuard</a></p>"""
+
+
 class Handler(http.server.BaseHTTPRequestHandler):
     server_version = "VPNStarterKitAdminPanel/1.0"
 
@@ -612,6 +678,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
         for proto in XRAY_PROTOCOLS:
             if path == f"/admin-panel/{proto}":
                 return self._handle_xray_page(proto)
+        if path == "/admin-panel/wireguard":
+            return self._handle_wireguard_page()
+        if path == "/admin-panel/wireguard/active":
+            return self._handle_wireguard_active()
         if path.startswith("/admin-panel/"):
             return self._handle_placeholder(path)
         self._send_html("<h1>404 Not Found</h1>", status=404)
@@ -649,6 +719,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return self._handle_xray_renew(proto)
             if path == f"/admin-panel/{proto}/generate-config":
                 return self._handle_xray_generate_config(proto)
+        if path == "/admin-panel/wireguard/create":
+            return self._handle_wireguard_create()
+        if path == "/admin-panel/wireguard/delete":
+            return self._handle_wireguard_delete()
+        if path == "/admin-panel/wireguard/renew":
+            return self._handle_wireguard_renew()
+        if path == "/admin-panel/wireguard/generate-config":
+            return self._handle_wireguard_generate_config()
         self._send_html("<h1>404 Not Found</h1>", status=404)
 
     def _handle_login_get(self):
@@ -866,6 +944,56 @@ class Handler(http.server.BaseHTTPRequestHandler):
         label = XRAY_PROTOCOLS[proto]["label"]
         body = render_action_result(f"{label} Account Config", output, f"/admin-panel/{proto}")
         self._send_html(render_shell_page(label, body, f"/admin-panel/{proto}"))
+
+    # ---- WireGuard (Phase 3) ----
+    def _handle_wireguard_page(self):
+        if not self._current_session():
+            return self._redirect("/admin-panel/login")
+        self._send_html(render_shell_page("WireGuard", render_wireguard_page(), "/admin-panel/wireguard"))
+
+    def _handle_wireguard_create(self):
+        if not self._current_session():
+            return self._redirect("/admin-panel/login")
+        form = self._read_form_body()
+        username = self._form_value(form, "username")
+        days = self._form_value(form, "days")
+        output = run_text(["bash", WG_ACTIONS_SCRIPT, "create", username, days])
+        body = render_action_result("Create WireGuard Account", output, "/admin-panel/wireguard")
+        self._send_html(render_shell_page("WireGuard", body, "/admin-panel/wireguard"))
+
+    def _handle_wireguard_delete(self):
+        if not self._current_session():
+            return self._redirect("/admin-panel/login")
+        form = self._read_form_body()
+        username = self._form_value(form, "username")
+        output = run_text(["bash", WG_ACTIONS_SCRIPT, "delete", username])
+        body = render_action_result("Delete WireGuard Account", output, "/admin-panel/wireguard")
+        self._send_html(render_shell_page("WireGuard", body, "/admin-panel/wireguard"))
+
+    def _handle_wireguard_renew(self):
+        if not self._current_session():
+            return self._redirect("/admin-panel/login")
+        form = self._read_form_body()
+        username = self._form_value(form, "username")
+        days = self._form_value(form, "days")
+        output = run_text(["bash", WG_ACTIONS_SCRIPT, "renew", username, days])
+        body = render_action_result("Renew WireGuard Account", output, "/admin-panel/wireguard")
+        self._send_html(render_shell_page("WireGuard", body, "/admin-panel/wireguard"))
+
+    def _handle_wireguard_generate_config(self):
+        if not self._current_session():
+            return self._redirect("/admin-panel/login")
+        form = self._read_form_body()
+        username = self._form_value(form, "username")
+        output = run_text(["bash", GENERATE_WIREGUARD_CONFIG_SCRIPT, username])
+        body = render_action_result("WireGuard Account Config", output, "/admin-panel/wireguard")
+        self._send_html(render_shell_page("WireGuard", body, "/admin-panel/wireguard"))
+
+    def _handle_wireguard_active(self):
+        if not self._current_session():
+            return self._redirect("/admin-panel/login")
+        body = render_wireguard_active_page()
+        self._send_html(render_shell_page("Check Active WireGuard Users", body, "/admin-panel/wireguard"))
 
 
 def main():
