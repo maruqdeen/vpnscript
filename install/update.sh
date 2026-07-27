@@ -40,11 +40,34 @@ cp "$EXTRACTED/install/uninstall.sh" "$INSTALL_DIR/install/" 2>/dev/null || true
 chmod +x "$INSTALL_DIR/menu/"*.sh "$INSTALL_DIR/core/"*.py "$INSTALL_DIR/core/"*.sh \
   "$INSTALL_DIR/install/"*.sh 2>/dev/null || true
 
+NGINX_REFRESHED=0
+if [[ -f "$EXTRACTED/core/nginx.conf" && -f /etc/nginx/conf.d/vpn.conf ]]; then
+  echo ">>> Refreshing nginx config..."
+  cp "$EXTRACTED/core/nginx.conf" "$INSTALL_DIR/core/nginx.conf"
+  BACKUP="/etc/nginx/conf.d/vpn.conf.bak-$(date +%s)"
+  cp /etc/nginx/conf.d/vpn.conf "$BACKUP"
+  install -m 644 "$INSTALL_DIR/core/nginx.conf" /etc/nginx/conf.d/vpn.conf
+  if nginx -t >/dev/null 2>&1; then
+    systemctl reload nginx
+    NGINX_REFRESHED=1
+    echo "    nginx config refreshed + reloaded."
+  else
+    echo "    WARNING: new nginx config failed 'nginx -t' -- restoring your previous config"
+    echo "    so nginx never runs (or reloads into) a broken state. Please report this."
+    cp "$BACKUP" /etc/nginx/conf.d/vpn.conf
+  fi
+fi
+
 echo ""
 echo "==================================================="
 echo " UPDATE COMPLETE"
 echo "==================================================="
 echo "  core/ + menu/ scripts refreshed from ${REPO_BRANCH}."
-echo "  nginx / xray / dropbear / slowdns config untouched."
+if [[ "$NGINX_REFRESHED" -eq 1 ]]; then
+  echo "  nginx config refreshed + reloaded."
+else
+  echo "  nginx config untouched (nothing new to apply, or vpn.conf not found)."
+fi
+echo "  xray / dropbear / slowdns config untouched."
 echo "  Type  menu  to continue."
 echo "==================================================="
