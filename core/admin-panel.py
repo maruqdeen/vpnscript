@@ -249,6 +249,58 @@ NAV_SECTIONS = [
     ("/admin-panel/backup", "Backup"),
 ]
 
+# ---- icons: shared outline set (Feather-style, 24x24, stroke=currentColor) ----
+ICONS = {
+    "grid": '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/>'
+            '<rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
+    "terminal": '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9l3 3-3 3M12 15h5"/>',
+    "shield": '<path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/>',
+    "shield-check": '<path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/><path d="M9 12l2 2 4-4"/>',
+    "zap": '<path d="M13 2L4 14h6l-1 8 9-12h-6l1-8z"/>',
+    "lock": '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/>',
+    "eye-off": '<path d="M3 3l18 18M10.6 5.1A9.7 9.7 0 0112 5c5 0 9 4 10 7-.5 1.4-1.4 3-2.8 4.4M6.6 6.6C4.5 8 3 9.9 2 12c1 3 5 7 10 7 1.2 0 2.3-.2 3.4-.6M9.9 9.9a3 3 0 004.2 4.2"/>',
+    "layers": '<path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 12l9 5 9-5"/>',
+    "sliders": '<line x1="4" y1="6" x2="20" y2="6"/><circle cx="9" cy="6" r="2"/><line x1="4" y1="12" x2="20" y2="12"/>'
+               '<circle cx="15" cy="12" r="2"/><line x1="4" y1="18" x2="20" y2="18"/><circle cx="9" cy="18" r="2"/>',
+    "bot": '<rect x="3" y="5" width="18" height="12" rx="2"/><path d="M8 21l4-4 4 4"/><circle cx="8.5" cy="11" r="1"/><circle cx="15.5" cy="11" r="1"/>',
+    "cloud": '<path d="M7 18a4 4 0 01-1-7.9A5 5 0 0116 8a4.5 4.5 0 011 8.9"/><path d="M12 12v6M9 15l3-3 3 3"/>',
+    "logout": '<path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/>',
+    "clock": '<circle cx="12" cy="12" r="9"/><path d="M12 8v4l3 2"/>',
+    "globe": '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 010 18M12 3a15 15 0 000 18"/>',
+    "cpu": '<rect x="6" y="6" width="12" height="12" rx="1"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/>',
+    "activity": '<path d="M3 12h4l2-7 4 14 2-7h6"/>',
+    "refresh": '<path d="M21 12a9 9 0 10-3.2 6.9"/><path d="M21 7v5h-5"/>',
+    "users": '<circle cx="9" cy="8" r="3"/><path d="M2 20c0-3.3 3.1-6 7-6s7 2.7 7 6"/><circle cx="17" cy="9" r="2.5"/><path d="M22 20c0-2.6-1.9-4.8-4.5-5.6"/>',
+    "download": '<path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 19h16"/>',
+    "server": '<rect x="3" y="4" width="18" height="6" rx="1"/><rect x="3" y="14" width="18" height="6" rx="1"/><path d="M7 7h.01M7 17h.01"/>',
+    "wifi": '<path d="M2 8.5a16 16 0 0120 0M5.5 12a11 11 0 0113 0M9 15.5a6 6 0 016 0"/><circle cx="12" cy="19" r="1"/>',
+    "power": '<path d="M12 2v9"/><path d="M18.4 6.6a9 9 0 11-12.8 0"/>',
+    "dot": '<circle cx="12" cy="12" r="3"/>',
+}
+
+NAV_ICONS = {
+    "/admin-panel/": "grid",
+    "/admin-panel/ssh": "terminal",
+    "/admin-panel/vmess": "shield",
+    "/admin-panel/vless": "zap",
+    "/admin-panel/trojan": "lock",
+    "/admin-panel/shadowsocks": "eye-off",
+    "/admin-panel/wireguard": "layers",
+    "/admin-panel/settings": "sliders",
+    "/admin-panel/security": "shield-check",
+    "/admin-panel/bot-api": "bot",
+    "/admin-panel/backup": "cloud",
+}
+
+
+def icon(name, css_class="icon"):
+    body = ICONS.get(name, ICONS["dot"])
+    return (
+        f'<svg class="{css_class}" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+        f'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{body}</svg>'
+    )
+
+
 BASE_CSS = """
 /* ---- tokens: light (default) ---- */
 :root {
@@ -367,16 +419,21 @@ nav {
 nav h1 { font-size: var(--text-sm); font-weight: 700; margin: 0; color: var(--text); }
 nav ul { list-style: none; margin: 8px 0; padding: 0 8px; flex: 1; }
 nav li a {
-  display: block; padding: 9px 12px; margin: 2px 0; border-radius: var(--radius-sm);
-  color: var(--text-muted); font-size: var(--text-sm); font-weight: 500;
+  display: flex; align-items: center; gap: 10px; padding: 9px 12px; margin: 2px 0;
+  border-radius: var(--radius-sm); color: var(--text-muted); font-size: var(--text-sm); font-weight: 500;
 }
 nav li a:hover { background: var(--surface-2); color: var(--text); text-decoration: none; }
 nav li.active a { background: var(--accent-tint); color: var(--accent); font-weight: 600; }
 nav .logout {
-  display: block; margin: 8px 16px 0; padding: 12px 12px 0; border-top: 1px solid var(--border);
-  color: var(--danger); font-size: var(--text-sm); font-weight: 500;
+  display: flex; align-items: center; gap: 10px; margin: 8px 16px 0; padding: 12px 12px 0;
+  border-top: 1px solid var(--border); color: var(--danger); font-size: var(--text-sm); font-weight: 500;
 }
 nav .logout:hover { text-decoration: none; color: var(--danger-hover); }
+
+/* ---- icons ---- */
+.icon { width: 14px; height: 14px; flex-shrink: 0; }
+.nav-icon { width: 17px; height: 17px; flex-shrink: 0; }
+.stat-icon { width: 13px; height: 13px; flex-shrink: 0; }
 
 .theme-toggle {
   display: inline-flex; align-items: center; justify-content: center;
@@ -393,15 +450,42 @@ nav .logout:hover { text-decoration: none; color: var(--danger-hover); }
 
 main { flex: 1; padding: 32px; max-width: 1120px; }
 
+/* ---- page header ---- */
+.page-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
+.page-head h2 { margin: 0; }
+.page-head-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.bw-pill {
+  display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px;
+  background: var(--success-tint); color: var(--success); font-size: var(--text-xs); font-weight: 600;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.btn-ghost {
+  display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border); background: var(--surface); color: var(--text);
+  font-size: var(--text-xs); font-weight: 600;
+}
+.btn-ghost:hover { background: var(--surface-2); text-decoration: none; }
+
 /* ---- cards / stats ---- */
 .card {
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md);
   padding: 20px 24px; margin-bottom: 20px; box-shadow: var(--shadow-sm);
 }
+.card-feature { position: relative; z-index: 0; overflow: hidden; }
+.card-icon-bg {
+  position: absolute; top: 10px; right: 10px; z-index: -1;
+  width: 72px; height: 72px; color: var(--text-muted); opacity: 0.07; pointer-events: none;
+}
 .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
-.stat { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px 14px; }
-.stat .label { font-size: var(--text-xs); color: var(--text-muted); font-weight: 500; text-transform: uppercase; letter-spacing: 0.03em; }
-.stat .value { font-size: var(--text-lg); margin-top: 4px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.stat { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px 14px; min-width: 0; }
+.stat .label {
+  display: flex; align-items: center; gap: 6px; font-size: var(--text-xs); color: var(--text-muted);
+  font-weight: 500; text-transform: uppercase; letter-spacing: 0.03em;
+}
+.stat .value {
+  font-size: var(--text-lg); margin-top: 4px; font-weight: 600; font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere; word-break: break-word;
+}
 
 /* ---- status badges ---- */
 .ok, .bad {
@@ -537,7 +621,8 @@ def render_shell_page(title, body_html, current_path):
     nav_items = ""
     for path, label in NAV_SECTIONS:
         active = ' class="active"' if path == current_path else ""
-        nav_items += f'<li{active}><a href="{html.escape(path)}">{html.escape(label)}</a></li>\n'
+        nav_icon = icon(NAV_ICONS.get(path, "dot"), "nav-icon")
+        nav_items += f'<li{active}><a href="{html.escape(path)}">{nav_icon}<span>{html.escape(label)}</span></a></li>\n'
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -546,13 +631,27 @@ def render_shell_page(title, body_html, current_path):
 <style>{BASE_CSS}</style></head>
 <body><div class="shell">
 <nav><div class="nav-head"><h1>VPN-Starter-Kit</h1>{THEME_TOGGLE_BUTTON}</div><ul>{nav_items}</ul>
-<a class="logout" href="/admin-panel/logout">Logout</a></nav>
+<a class="logout" href="/admin-panel/logout">{icon("logout", "nav-icon")}<span>Logout</span></a></nav>
 <main>{body_html}</main>
 </div></body></html>"""
 
 
 def _svc_badge(active):
     return '<span class="ok">Active</span>' if active else '<span class="bad">Inactive</span>'
+
+
+def _stat(icon_name, label, value_html):
+    return (
+        f'<div class="stat"><div class="label">{icon(icon_name, "stat-icon")}<span>{html.escape(label)}</span></div>'
+        f'<div class="value">{value_html}</div></div>'
+    )
+
+
+def _feature_card(icon_name, title, inner_html):
+    return (
+        f'<div class="card card-feature">{icon(icon_name, "card-icon-bg")}'
+        f'<h3>{html.escape(title)}</h3>{inner_html}</div>'
+    )
 
 
 def render_dashboard_body(stats):
@@ -564,38 +663,42 @@ def render_dashboard_body(stats):
     accounts = stats.get("accounts", {})
     bandwidth = stats.get("bandwidth", {})
 
+    server_rows = (
+        _stat("clock", "Uptime", html.escape(str(server.get('uptime', 'n/a'))))
+        + _stat("globe", "Server IP", html.escape(str(server.get('ip', 'n/a'))))
+        + _stat("cpu", "OS", html.escape(str(server.get('os', 'n/a'))))
+        + _stat("cpu", "RAM", f"{html.escape(str(server.get('ram_used_mb', 0)))} / {html.escape(str(server.get('ram_total_mb', 0)))} MB")
+        + _stat("activity", "CPU", f"{html.escape(str(server.get('cpu_pct', 0)))}%")
+        + _stat("globe", "Domain", html.escape(str(server.get('domain', 'n/a'))))
+        + _stat("wifi", "NS Domain", html.escape(str(server.get('ns_domain', 'n/a'))))
+        + _stat("power", "Auto Reboot", html.escape(str(server.get('reboot_status', 'n/a'))))
+    )
     svc_rows = "".join(
-        f'<div class="stat"><div class="label">{html.escape(name)}</div><div class="value">{_svc_badge(active)}</div></div>'
-        for name, active in services.items()
+        _stat("server", name, _svc_badge(active)) for name, active in services.items()
     )
     acc_rows = "".join(
-        f'<div class="stat"><div class="label">{html.escape(name.capitalize())}</div><div class="value">{int(count)}</div></div>'
-        for name, count in accounts.items()
+        _stat("users", name.capitalize(), str(int(count))) for name, count in accounts.items()
+    )
+    bw_rows = (
+        _stat("download", "Today", html.escape(str(bandwidth.get('today_human', '0B'))))
+        + _stat("download", "Yesterday", html.escape(str(bandwidth.get('yesterday_human', '0B'))))
+        + _stat("download", "This Month", html.escape(str(bandwidth.get('month_human', '0B'))))
     )
 
-    return f"""<h2>Dashboard</h2>
-<div class="card">
-<h3>Server Info</h3>
-<div class="grid">
-<div class="stat"><div class="label">Uptime</div><div class="value">{html.escape(str(server.get('uptime', 'n/a')))}</div></div>
-<div class="stat"><div class="label">Server IP</div><div class="value">{html.escape(str(server.get('ip', 'n/a')))}</div></div>
-<div class="stat"><div class="label">OS</div><div class="value">{html.escape(str(server.get('os', 'n/a')))}</div></div>
-<div class="stat"><div class="label">RAM</div><div class="value">{html.escape(str(server.get('ram_used_mb', 0)))} / {html.escape(str(server.get('ram_total_mb', 0)))} MB</div></div>
-<div class="stat"><div class="label">CPU</div><div class="value">{html.escape(str(server.get('cpu_pct', 0)))}%</div></div>
-<div class="stat"><div class="label">Domain</div><div class="value">{html.escape(str(server.get('domain', 'n/a')))}</div></div>
-<div class="stat"><div class="label">NS Domain</div><div class="value">{html.escape(str(server.get('ns_domain', 'n/a')))}</div></div>
-<div class="stat"><div class="label">Auto Reboot</div><div class="value">{html.escape(str(server.get('reboot_status', 'n/a')))}</div></div>
-</div></div>
-
-<div class="card"><h3>Active Service</h3><div class="grid">{svc_rows}</div></div>
-
-<div class="card"><h3>Active Account</h3><div class="grid">{acc_rows}</div></div>
-
-<div class="card"><h3>Bandwidth Usage</h3><div class="grid">
-<div class="stat"><div class="label">Today</div><div class="value">{html.escape(str(bandwidth.get('today_human', '0B')))}</div></div>
-<div class="stat"><div class="label">Yesterday</div><div class="value">{html.escape(str(bandwidth.get('yesterday_human', '0B')))}</div></div>
-<div class="stat"><div class="label">This Month</div><div class="value">{html.escape(str(bandwidth.get('month_human', '0B')))}</div></div>
+    header = f"""<div class="page-head">
+<h2>Dashboard</h2>
+<div class="page-head-meta">
+<span class="bw-pill">{icon('download', 'icon')}Today {html.escape(str(bandwidth.get('today_human', '0B')))} &middot; Month {html.escape(str(bandwidth.get('month_human', '0B')))}</span>
+<a class="btn-ghost" href="/admin-panel/">{icon('refresh', 'icon')}Refresh</a>
 </div></div>"""
+
+    return (
+        header
+        + _feature_card("cpu", "Server Info", f'<div class="grid">{server_rows}</div>')
+        + _feature_card("server", "Active Service", f'<div class="grid">{svc_rows}</div>')
+        + _feature_card("users", "Active Account", f'<div class="grid">{acc_rows}</div>')
+        + _feature_card("download", "Bandwidth Usage", f'<div class="grid">{bw_rows}</div>')
+    )
 
 
 def render_action_result(title, output_text, back_path, back_label="Back"):
