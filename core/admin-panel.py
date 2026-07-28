@@ -433,7 +433,7 @@ nav .logout:hover { text-decoration: none; color: var(--danger-hover); }
 /* ---- icons ---- */
 .icon { width: 14px; height: 14px; flex-shrink: 0; }
 .nav-icon { width: 17px; height: 17px; flex-shrink: 0; }
-.stat-icon { width: 13px; height: 13px; flex-shrink: 0; }
+.stat-icon { width: 15px; height: 15px; flex-shrink: 0; color: var(--accent); }
 
 .theme-toggle {
   display: inline-flex; align-items: center; justify-content: center;
@@ -477,7 +477,10 @@ main { flex: 1; padding: 32px; max-width: 1120px; }
   width: 72px; height: 72px; color: var(--text-muted); opacity: 0.07; pointer-events: none;
 }
 .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
-.stat { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px 14px; min-width: 0; }
+.stat {
+  background: var(--surface-2); border: 1px solid var(--border); border-top: 3px solid var(--accent);
+  border-radius: var(--radius-sm); padding: 14px 14px 12px; min-width: 0;
+}
 .stat .label {
   display: flex; align-items: center; gap: 6px; font-size: var(--text-xs); color: var(--text-muted);
   font-weight: 500; text-transform: uppercase; letter-spacing: 0.03em;
