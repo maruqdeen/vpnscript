@@ -275,6 +275,8 @@ ICONS = {
     "server": '<rect x="3" y="4" width="18" height="6" rx="1"/><rect x="3" y="14" width="18" height="6" rx="1"/><path d="M7 7h.01M7 17h.01"/>',
     "wifi": '<path d="M2 8.5a16 16 0 0120 0M5.5 12a11 11 0 0113 0M9 15.5a6 6 0 016 0"/><circle cx="12" cy="19" r="1"/>',
     "power": '<path d="M12 2v9"/><path d="M18.4 6.6a9 9 0 11-12.8 0"/>',
+    "user-check": '<circle cx="9" cy="8" r="3"/><path d="M2 20c0-3.3 3.1-6 7-6s7 2.7 7 6"/><path d="M16.5 11l1.5 1.5L21.5 9"/>',
+    "user-x": '<circle cx="9" cy="8" r="3"/><path d="M2 20c0-3.3 3.1-6 7-6s7 2.7 7 6"/><path d="M16 8.5l5 5M21 8.5l-5 5"/>',
     "dot": '<circle cx="12" cy="12" r="3"/>',
 }
 
@@ -567,6 +569,45 @@ button.danger:hover { background: var(--danger-hover); }
 }
 .links a { margin-right: 20px; font-weight: 500; font-size: var(--text-sm); }
 
+/* ---- action cards (click to open a result dialog) ---- */
+.action-card {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+  background: var(--surface-2); border: 1px solid var(--border); border-top: 3px solid var(--border-strong);
+  border-radius: var(--radius-md); padding: 26px 16px; text-align: center;
+  color: var(--text); text-decoration: none; cursor: pointer;
+}
+.action-card:hover { background: var(--surface); box-shadow: var(--shadow-sm); text-decoration: none; transform: translateY(-1px); }
+.action-card:active { transform: translateY(0); }
+.action-icon { width: 30px; height: 30px; color: var(--text-muted); }
+.action-label { font-size: var(--text-sm); font-weight: 600; }
+.action-card--success { border-top-color: var(--success); }
+.action-card--success .action-icon { color: var(--success); }
+.action-card--danger { border-top-color: var(--danger); }
+.action-card--danger .action-icon { color: var(--danger); }
+.action-card--accent { border-top-color: var(--accent); }
+.action-card--accent .action-icon { color: var(--accent); }
+
+/* ---- result dialog ---- */
+dialog#action-dialog {
+  width: min(560px, calc(100vw - 40px)); max-height: min(80vh, 640px);
+  padding: 0; border: 1px solid var(--border); border-radius: var(--radius-md);
+  background: var(--surface); color: var(--text); box-shadow: var(--shadow-md);
+}
+dialog#action-dialog::backdrop { background: oklch(15% 0.02 var(--hue) / 0.5); }
+.dialog-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 16px 20px; border-bottom: 1px solid var(--border);
+}
+.dialog-title { margin: 0; font-size: var(--text-md); font-weight: 700; text-transform: none; letter-spacing: 0; color: var(--text); }
+.dialog-close {
+  margin: 0; padding: 0; width: 28px; height: 28px; line-height: 1; font-size: 1.1rem;
+  border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--surface);
+  color: var(--text-muted);
+}
+.dialog-close:hover { background: var(--surface-2); color: var(--text); }
+.dialog-body { padding: 20px; overflow-y: auto; max-height: calc(80vh - 66px); }
+.dialog-body table { margin-top: 0; }
+
 /* ---- structural responsiveness ---- */
 @media (max-width: 720px) {
   .shell { flex-direction: column; }
@@ -595,6 +636,28 @@ THEME_TOGGLE_BUTTON = """<button type="button" class="theme-toggle" onclick="tog
 <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
 <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
 </button>"""
+
+DIALOG_SCRIPT = """function openActionDialog(url, title){
+  var dlg = document.getElementById('action-dialog');
+  if (!dlg) return true;
+  dlg.querySelector('.dialog-title').textContent = title;
+  dlg.querySelector('.dialog-body').innerHTML = '<p class="muted">Loading...</p>';
+  dlg.showModal();
+  fetch(url).then(function(r){ return r.text(); }).then(function(html){
+    var doc = new DOMParser().parseFromString(html, 'text/html');
+    var card = doc.querySelector('.card');
+    dlg.querySelector('.dialog-body').innerHTML = card ? card.innerHTML : '<p class="error">Could not load.</p>';
+  }).catch(function(){
+    dlg.querySelector('.dialog-body').innerHTML = '<p class="error">Could not load. Try again.</p>';
+  });
+  return false;
+}"""
+
+ACTION_DIALOG_HTML = """<dialog id="action-dialog" class="action-dialog">
+<div class="dialog-head"><h3 class="dialog-title">&nbsp;</h3>
+<button type="button" class="dialog-close" onclick="document.getElementById('action-dialog').close()" aria-label="Close">&times;</button></div>
+<div class="dialog-body"></div>
+</dialog>"""
 
 
 def render_login_page(error=None):
@@ -630,13 +693,16 @@ def render_shell_page(title, body_html, current_path):
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{html.escape(title)} -- VPN-Starter-Kit Admin Panel</title>
-<script>{THEME_INIT_SCRIPT}</script>
+<script>{THEME_INIT_SCRIPT}
+{DIALOG_SCRIPT}</script>
 <style>{BASE_CSS}</style></head>
 <body><div class="shell">
 <nav><div class="nav-head"><h1>VPN-Starter-Kit</h1>{THEME_TOGGLE_BUTTON}</div><ul>{nav_items}</ul>
 <a class="logout" href="/admin-panel/logout">{icon("logout", "nav-icon")}<span>Logout</span></a></nav>
 <main>{body_html}</main>
-</div></body></html>"""
+</div>
+{ACTION_DIALOG_HTML}
+</body></html>"""
 
 
 def _svc_badge(active):
@@ -654,6 +720,21 @@ def _feature_card(icon_name, title, inner_html):
     return (
         f'<div class="card card-feature">{icon(icon_name, "card-icon-bg")}'
         f'<h3>{html.escape(title)}</h3>{inner_html}</div>'
+    )
+
+
+def _action_card(href, icon_name, label, variant="accent"):
+    """A clickable icon+label card that opens its target's result in a
+    dialog (openActionDialog, defined in DIALOG_SCRIPT) instead of
+    navigating away. href stays real -- middle-click / no-JS still works,
+    it just falls back to a normal full-page GET."""
+    safe_href = html.escape(href)
+    safe_label = html.escape(label)
+    js_label = safe_label.replace("'", "\\'")
+    return (
+        f'<a href="{safe_href}" class="action-card action-card--{variant}" '
+        f'onclick="return openActionDialog(this.href, \'{js_label}\')">'
+        f'{icon(icon_name, "action-icon")}<span class="action-label">{safe_label}</span></a>'
     )
 
 
@@ -767,10 +848,13 @@ def render_ssh_page():
 </table>
 </div>
 
-<div class="card links">
-<a href="/admin-panel/ssh/active">Check Active Users</a>
-<a href="/admin-panel/ssh/locked">Check Locked Users</a>
-<a href="/admin-panel/ssh/autokill">Autokill Multi Login Setup</a>
+<div class="card">
+<h3>Quick Checks</h3>
+<div class="grid">
+{_action_card("/admin-panel/ssh/active", "user-check", "Check Active Users", "success")}
+{_action_card("/admin-panel/ssh/locked", "user-x", "Check Locked Users", "danger")}
+{_action_card("/admin-panel/ssh/autokill", "zap", "Autokill Multi Login Setup", "accent")}
+</div>
 </div>"""
 
 
