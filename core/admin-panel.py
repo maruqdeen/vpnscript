@@ -250,71 +250,284 @@ NAV_SECTIONS = [
 ]
 
 BASE_CSS = """
+/* ---- tokens: light (default) ---- */
+:root {
+  --hue: 255;
+  --bg: oklch(97.8% 0.004 var(--hue));
+  --surface: oklch(100% 0 0);
+  --surface-2: oklch(96.5% 0.005 var(--hue));
+  --sidebar-bg: oklch(95.5% 0.007 var(--hue));
+  --border: oklch(89% 0.006 var(--hue));
+  --border-strong: oklch(82% 0.009 var(--hue));
+  --text: oklch(23% 0.014 var(--hue));
+  --text-muted: oklch(45% 0.014 var(--hue));
+  --text-on-accent: oklch(99% 0 0);
+
+  --accent: oklch(55% 0.19 258);
+  --accent-hover: oklch(48% 0.19 258);
+  --accent-tint: oklch(93% 0.03 258);
+
+  --success: oklch(48% 0.13 152);
+  --success-tint: oklch(93% 0.05 152);
+  --danger: oklch(53% 0.21 25);
+  --danger-hover: oklch(46% 0.21 25);
+  --danger-tint: oklch(94% 0.06 25);
+
+  --shadow-sm: 0 1px 2px oklch(25% 0.02 var(--hue) / 0.06);
+  --shadow-md: 0 2px 8px oklch(25% 0.02 var(--hue) / 0.08), 0 1px 2px oklch(25% 0.02 var(--hue) / 0.06);
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-base: 0.875rem;
+  --text-md: 1rem;
+  --text-lg: 1.25rem;
+  --text-xl: 1.5rem;
+
+  color-scheme: light;
+}
+
+/* ---- tokens: dark (opt-in via [data-theme]) ---- */
+:root[data-theme="dark"] {
+  --bg: oklch(18% 0.010 var(--hue));
+  --surface: oklch(22% 0.010 var(--hue));
+  --surface-2: oklch(26% 0.012 var(--hue));
+  --sidebar-bg: oklch(15% 0.012 var(--hue));
+  --border: oklch(32% 0.014 var(--hue));
+  --border-strong: oklch(40% 0.016 var(--hue));
+  --text: oklch(93% 0.006 var(--hue));
+  --text-muted: oklch(70% 0.012 var(--hue));
+  --text-on-accent: oklch(99% 0 0);
+
+  --accent: oklch(64% 0.18 258);
+  --accent-hover: oklch(70% 0.18 258);
+  --accent-tint: oklch(30% 0.06 258);
+
+  --success: oklch(72% 0.15 152);
+  --success-tint: oklch(30% 0.07 152);
+  --danger: oklch(68% 0.19 25);
+  --danger-hover: oklch(74% 0.19 25);
+  --danger-tint: oklch(32% 0.09 25);
+
+  --shadow-sm: 0 1px 2px oklch(0% 0 0 / 0.24);
+  --shadow-md: 0 4px 12px oklch(0% 0 0 / 0.32), 0 1px 3px oklch(0% 0 0 / 0.24);
+
+  color-scheme: dark;
+}
+
+/* ---- base ---- */
 * { box-sizing: border-box; }
-body { margin: 0; font-family: -apple-system, Segoe UI, Roboto, sans-serif;
-       background: #0f1420; color: #e4e8f1; }
-a { color: #6fb3ff; text-decoration: none; }
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: var(--text-base);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+@media (prefers-reduced-motion: no-preference) {
+  body, .card, .stat, button, a, nav li a, input, textarea, select, .theme-toggle svg {
+    transition: background-color 180ms ease, border-color 180ms ease, color 180ms ease,
+                box-shadow 180ms ease, transform 150ms ease;
+  }
+}
+
+a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
+a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visible,
+select:focus-visible, [tabindex]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+h2 { margin: 0 0 20px; font-size: var(--text-xl); font-weight: 600; letter-spacing: -0.01em; text-wrap: balance; }
+h3 { margin: 0 0 12px; font-size: var(--text-sm); font-weight: 600; text-transform: uppercase;
+     letter-spacing: 0.04em; color: var(--text-muted); text-wrap: balance; }
+.muted { color: var(--text-muted); font-size: var(--text-sm); }
+code {
+  background: var(--surface-2); border: 1px solid var(--border);
+  padding: 2px 6px; border-radius: 4px; font-size: 0.85em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+::placeholder { color: var(--text-muted); opacity: 1; }
+
+/* ---- shell / sidebar ---- */
 .shell { display: flex; min-height: 100vh; }
-nav { width: 220px; background: #131a2b; padding: 20px 0; flex-shrink: 0; }
-nav h1 { font-size: 15px; padding: 0 20px 16px; margin: 0; color: #9fb3d9; }
-nav ul { list-style: none; margin: 0; padding: 0; }
-nav li a { display: block; padding: 10px 20px; color: #cdd6e6; }
-nav li.active a { background: #1e2a45; color: #fff; border-left: 3px solid #6fb3ff; }
-nav .logout { display: block; margin: 20px 20px 0; padding: 8px 0; color: #ff8080; }
-main { flex: 1; padding: 32px; }
-h2 { margin-top: 0; }
-.muted { color: #8a93a6; }
-.card { background: #131a2b; border-radius: 8px; padding: 20px; margin-bottom: 20px; }
-.card h3 { margin-top: 0; font-size: 14px; text-transform: uppercase; color: #9fb3d9; }
-.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
-.stat { background: #0f1420; border-radius: 6px; padding: 12px; }
-.stat .label { font-size: 12px; color: #8a93a6; }
-.stat .value { font-size: 20px; margin-top: 4px; }
-.ok { color: #4ade80; }
-.bad { color: #f87171; }
-.login-wrap { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
-.login-box { background: #131a2b; padding: 32px; border-radius: 10px; width: 320px; }
-.login-box h1 { font-size: 16px; margin-top: 0; color: #9fb3d9; }
-.login-box input { width: 100%; padding: 10px; margin: 8px 0 16px; border-radius: 6px;
-                    border: 1px solid #2a3550; background: #0f1420; color: #e4e8f1; }
-.login-box button { width: 100%; padding: 10px; border-radius: 6px; border: none;
-                     background: #3b82f6; color: #fff; font-weight: 600; cursor: pointer; }
-.login-box button:hover { background: #2563eb; }
-.error { background: #3a1620; color: #f87171; padding: 10px; border-radius: 6px; margin-bottom: 12px; }
-code { background: #0f1420; padding: 2px 6px; border-radius: 4px; }
-table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-th, td { text-align: left; padding: 8px; border-bottom: 1px solid #1e2a45; font-size: 14px; }
-th { color: #8a93a6; font-weight: 600; }
-.stack-form label { display: block; margin-top: 10px; font-size: 12px; color: #8a93a6; }
-.stack-form input { width: 100%; padding: 8px; margin-top: 4px; border-radius: 6px;
-                     border: 1px solid #2a3550; background: #0f1420; color: #e4e8f1; }
-.stack-form button, form button { margin-top: 16px; padding: 8px 16px; border-radius: 6px; border: none;
-                                   background: #3b82f6; color: #fff; cursor: pointer; }
-.inline-form { display: inline-block; margin-right: 6px; }
-.inline-form input { width: 80px; padding: 4px; border-radius: 4px; border: 1px solid #2a3550;
-                      background: #0f1420; color: #e4e8f1; }
-.inline-form button { margin-top: 0; padding: 6px 10px; font-size: 13px; }
-button.danger, .inline-form button.danger { background: #dc2626; }
-.output { background: #0f1420; padding: 16px; border-radius: 8px; white-space: pre-wrap; font-size: 13px; }
-.links a { margin-right: 16px; }
+nav {
+  width: 240px; flex-shrink: 0; display: flex; flex-direction: column;
+  background: var(--sidebar-bg); border-right: 1px solid var(--border); padding: 16px 0;
+}
+.nav-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 16px 16px; margin-bottom: 4px; border-bottom: 1px solid var(--border);
+}
+nav h1 { font-size: var(--text-sm); font-weight: 700; margin: 0; color: var(--text); }
+nav ul { list-style: none; margin: 8px 0; padding: 0 8px; flex: 1; }
+nav li a {
+  display: block; padding: 9px 12px; margin: 2px 0; border-radius: var(--radius-sm);
+  color: var(--text-muted); font-size: var(--text-sm); font-weight: 500;
+}
+nav li a:hover { background: var(--surface-2); color: var(--text); text-decoration: none; }
+nav li.active a { background: var(--accent-tint); color: var(--accent); font-weight: 600; }
+nav .logout {
+  display: block; margin: 8px 16px 0; padding: 12px 12px 0; border-top: 1px solid var(--border);
+  color: var(--danger); font-size: var(--text-sm); font-weight: 500;
+}
+nav .logout:hover { text-decoration: none; color: var(--danger-hover); }
+
+.theme-toggle {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; padding: 0; flex-shrink: 0;
+  border-radius: var(--radius-sm); border: 1px solid var(--border);
+  background: var(--surface); color: var(--text-muted); cursor: pointer;
+}
+.theme-toggle:hover { background: var(--surface-2); color: var(--text); }
+.theme-toggle svg { width: 16px; height: 16px; display: block; }
+.theme-toggle .icon-moon { display: none; }
+:root[data-theme="dark"] .theme-toggle .icon-sun { display: none; }
+:root[data-theme="dark"] .theme-toggle .icon-moon { display: block; }
+.login-wrap .theme-toggle { position: fixed; top: 20px; right: 20px; }
+
+main { flex: 1; padding: 32px; max-width: 1120px; }
+
+/* ---- cards / stats ---- */
+.card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md);
+  padding: 20px 24px; margin-bottom: 20px; box-shadow: var(--shadow-sm);
+}
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+.stat { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px 14px; }
+.stat .label { font-size: var(--text-xs); color: var(--text-muted); font-weight: 500; text-transform: uppercase; letter-spacing: 0.03em; }
+.stat .value { font-size: var(--text-lg); margin-top: 4px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* ---- status badges ---- */
+.ok, .bad {
+  display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px;
+  border-radius: 999px; font-size: var(--text-xs); font-weight: 600;
+}
+.ok { background: var(--success-tint); color: var(--success); }
+.bad { background: var(--danger-tint); color: var(--danger); }
+.ok::before, .bad::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+/* ---- login ---- */
+.login-wrap { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; }
+.login-box {
+  background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow-md);
+  padding: 36px 32px; border-radius: var(--radius-md); width: 100%; max-width: 340px;
+}
+.login-box h1 { font-size: var(--text-lg); font-weight: 700; margin: 0 0 24px; color: var(--text); }
+.login-box label { display: block; font-size: var(--text-sm); font-weight: 500; color: var(--text-muted); margin-bottom: 6px; }
+.login-box input {
+  width: 100%; padding: 10px 12px; margin: 0 0 18px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong); background: var(--surface); color: var(--text);
+  font-size: var(--text-base); font-family: inherit;
+}
+.login-box button { width: 100%; margin-top: 4px; }
+.error {
+  background: var(--danger-tint); color: var(--danger); padding: 10px 12px;
+  border-radius: var(--radius-sm); margin-bottom: 16px; font-size: var(--text-sm); font-weight: 500;
+}
+
+/* ---- tables ---- */
+table { width: 100%; border-collapse: collapse; margin-top: 4px; font-size: var(--text-sm); }
+th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--border); }
+th { color: var(--text-muted); font-weight: 600; font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.03em; }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: var(--surface-2); }
+
+/* ---- forms / buttons ---- */
+.stack-form label {
+  display: block; margin-top: 12px; margin-bottom: 4px; font-size: var(--text-xs);
+  font-weight: 500; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.03em;
+}
+.stack-form input, .stack-form textarea, .stack-form select {
+  width: 100%; padding: 9px 10px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong); background: var(--surface); color: var(--text);
+  font-size: var(--text-base); font-family: inherit;
+}
+.stack-form textarea { resize: vertical; min-height: 100px; }
+
+input:disabled, textarea:disabled, select:disabled {
+  background: var(--surface-2); color: var(--text-muted); cursor: not-allowed;
+}
+
+button {
+  margin-top: 16px; padding: 9px 16px; border-radius: var(--radius-sm); border: 1px solid transparent;
+  background: var(--accent); color: var(--text-on-accent); font-size: var(--text-sm); font-weight: 600;
+  font-family: inherit; cursor: pointer;
+}
+button:hover { background: var(--accent-hover); }
+button:active { transform: translateY(1px); }
+button:disabled { background: var(--border-strong); color: var(--text-muted); cursor: not-allowed; transform: none; }
+button.danger { background: var(--danger); }
+button.danger:hover { background: var(--danger-hover); }
+
+.inline-form { display: inline-block; margin-right: 8px; margin-bottom: 6px; vertical-align: middle; }
+.inline-form button { margin-top: 0; padding: 7px 12px; font-size: var(--text-xs); }
+.inline-form input {
+  width: 92px; padding: 6px 8px; margin: 0; vertical-align: middle;
+  border-radius: var(--radius-sm); border: 1px solid var(--border-strong);
+  background: var(--surface); color: var(--text); font-size: var(--text-sm); font-family: inherit;
+}
+
+.output {
+  background: var(--surface-2); border: 1px solid var(--border); padding: 16px; border-radius: var(--radius-sm);
+  white-space: pre-wrap; word-break: break-word; line-height: 1.6; color: var(--text);
+  font-size: var(--text-sm); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.links a { margin-right: 20px; font-weight: 500; font-size: var(--text-sm); }
+
+/* ---- structural responsiveness ---- */
+@media (max-width: 720px) {
+  .shell { flex-direction: column; }
+  nav { width: 100%; flex-direction: row; align-items: center; padding: 10px 12px; flex-wrap: wrap; }
+  .nav-head { border-bottom: none; padding: 0; margin: 0; flex: 1; }
+  nav ul { display: flex; flex-wrap: wrap; flex: 1 1 100%; margin: 10px 0 0; padding: 0; gap: 4px; }
+  nav li a { padding: 6px 10px; }
+  nav .logout { margin: 10px 0 0; padding-top: 10px; border-top: 1px solid var(--border); flex: 1 1 100%; }
+  main { padding: 20px 16px; }
+  table { display: block; overflow-x: auto; white-space: nowrap; }
+}
 """
+
+THEME_INIT_SCRIPT = """(function(){
+  var t = localStorage.getItem('admin-panel-theme');
+  if (!t) t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  document.documentElement.setAttribute('data-theme', t);
+})();
+function toggleTheme(){
+  var next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  localStorage.setItem('admin-panel-theme', next);
+}"""
+
+THEME_TOGGLE_BUTTON = """<button type="button" class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle dark mode" title="Toggle dark mode">
+<svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+<svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+</button>"""
 
 
 def render_login_page(error=None):
     error_html = f'<div class="error">{html.escape(error)}</div>' if error else ""
     return f"""<!doctype html>
-<html><head><meta charset="utf-8">
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Login -- VPN-Starter-Kit Admin Panel</title>
+<script>{THEME_INIT_SCRIPT}</script>
 <style>{BASE_CSS}</style></head>
-<body><div class="login-wrap"><div class="login-box">
+<body><div class="login-wrap">
+{THEME_TOGGLE_BUTTON}
+<div class="login-box">
 <h1>VPN-Starter-Kit Admin Panel</h1>
 {error_html}
 <form method="post" action="/admin-panel/login">
-<label>Username</label>
-<input type="text" value="root" disabled>
-<label>Password (your VPS root password)</label>
-<input type="password" name="password" autofocus>
+<label for="login-username">Username</label>
+<input id="login-username" type="text" value="root" disabled>
+<label for="login-password">Password (your VPS root password)</label>
+<input id="login-password" type="password" name="password" autofocus>
 <button type="submit">Login</button>
 </form>
 </div></div></body></html>"""
@@ -326,11 +539,13 @@ def render_shell_page(title, body_html, current_path):
         active = ' class="active"' if path == current_path else ""
         nav_items += f'<li{active}><a href="{html.escape(path)}">{html.escape(label)}</a></li>\n'
     return f"""<!doctype html>
-<html><head><meta charset="utf-8">
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{html.escape(title)} -- VPN-Starter-Kit Admin Panel</title>
+<script>{THEME_INIT_SCRIPT}</script>
 <style>{BASE_CSS}</style></head>
 <body><div class="shell">
-<nav><h1>VPN-Starter-Kit</h1><ul>{nav_items}</ul>
+<nav><div class="nav-head"><h1>VPN-Starter-Kit</h1>{THEME_TOGGLE_BUTTON}</div><ul>{nav_items}</ul>
 <a class="logout" href="/admin-panel/logout">Logout</a></nav>
 <main>{body_html}</main>
 </div></body></html>"""
@@ -433,7 +648,7 @@ def render_ssh_page():
 <label>Bandwidth limit GB (0 = unlimited)</label><input type="number" name="bw_limit_gb" value="0">
 <button type="submit">Create</button>
 </form>
-<form method="post" action="/admin-panel/ssh/trial" style="margin-top:12px">
+<form method="post" action="/admin-panel/ssh/trial">
 <button type="submit">Create Trial Account (24h)</button>
 </form>
 </div>
@@ -566,7 +781,7 @@ def render_xray_page(proto):
 <label>Expiry (days)</label><input type="number" name="days" value="30" required>
 <button type="submit">Create</button>
 </form>
-<form method="post" action="/admin-panel/{proto}/trial" style="margin-top:12px">
+<form method="post" action="/admin-panel/{proto}/trial">
 <button type="submit">Create Trial Account</button>
 </form>
 </div>
@@ -734,7 +949,7 @@ def render_settings_page():
 <h3>Change Banner</h3>
 <form method="post" action="/admin-panel/settings/banner" class="stack-form">
 <label>SSH login banner text</label>
-<textarea name="banner_text" rows="5" style="width:100%; padding:8px; border-radius:6px; border:1px solid #2a3550; background:#0f1420; color:#e4e8f1;">{html.escape(banner_text)}</textarea>
+<textarea name="banner_text" rows="5">{html.escape(banner_text)}</textarea>
 <button type="submit">Save Banner</button>
 </form>
 </div>
@@ -858,7 +1073,7 @@ def render_bot_api_page():
 <input type="password" name="token" placeholder="123456:ABC-DEF...">
 <button type="submit">Connect / Reconnect</button>
 </form>
-<form method="post" action="/admin-panel/bot-api/admin-bot/disconnect" style="margin-top:12px">
+<form method="post" action="/admin-panel/bot-api/admin-bot/disconnect">
 <button type="submit" class="danger">Disconnect</button>
 </form>
 </div>
@@ -872,7 +1087,7 @@ def render_bot_api_page():
 <input type="password" name="token" placeholder="123456:ABC-DEF...">
 <button type="submit">Connect / Reconnect</button>
 </form>
-<form method="post" action="/admin-panel/bot-api/user-bot/disconnect" style="margin-top:12px">
+<form method="post" action="/admin-panel/bot-api/user-bot/disconnect">
 <button type="submit" class="danger">Disconnect</button>
 </form>
 </div>
