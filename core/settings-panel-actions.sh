@@ -22,6 +22,8 @@
 #   settings-panel-actions.sh check-running
 #   settings-panel-actions.sh restart-all
 #   settings-panel-actions.sh clear-ram-cache
+#   settings-panel-actions.sh smtp-get
+#   settings-panel-actions.sh smtp-set <host> <port> <username> <password> <from> <use_tls: true|false>
 set -uo pipefail
 
 if [[ $EUID -ne 0 ]]; then echo "Run as root."; exit 1; fi
@@ -34,6 +36,7 @@ NS_DOMAIN_FILE="$INSTALL_DIR/ns-domain"
 AUTOREBOOT_FLAG="$INSTALL_DIR/autoreboot.enabled"
 AUTOREBOOT_TIME_FILE="$INSTALL_DIR/autoreboot.time"
 AUTOREBOOT_CRON="/etc/cron.d/vpn-auto-reboot"
+SMTP_CONFIG_FILE="$INSTALL_DIR/smtp-config.json"
 
 ACTION="${1:-}"
 [[ $# -gt 0 ]] && shift
@@ -239,6 +242,36 @@ case "$ACTION" in
     printf "  RAM used after  : %s MB\n" "$after"
     printf "  Freed           : %s MB\n" "$freed"
     printf '%s\n' "===================================================="
+    ;;
+
+  smtp-get)
+    if [[ -f "$SMTP_CONFIG_FILE" ]]; then
+      jq -c '{ok:true, configured:true, host:(.host // ""), port:(.port // 587),
+               username:(.username // ""), from:(.from // ""), use_tls:(.use_tls // true)}' \
+        "$SMTP_CONFIG_FILE" 2>/dev/null || jq -n '{ok:true, configured:false}'
+    else
+      jq -n '{ok:true, configured:false}'
+    fi
+    ;;
+
+  smtp-set)
+    HOST="${1:-}"; PORT="${2:-587}"; USERNAME="${3:-}"; PASSWORD="${4:-}"; FROM="${5:-}"; USE_TLS="${6:-true}"
+    if [[ -z "$PASSWORD" && -f "$SMTP_CONFIG_FILE" ]]; then
+      # Blank password on an already-configured server = "keep the current
+      # one" (the panel never redisplays a stored password to the browser
+      # to fill the field with, so blank is the only way to mean "unchanged").
+      PASSWORD="$(jq -r '.password // ""' "$SMTP_CONFIG_FILE" 2>/dev/null)"
+    fi
+    if [[ -z "$HOST" || -z "$USERNAME" || -z "$PASSWORD" || -z "$FROM" ]]; then
+      echo "Host, username, password, and from-address are all required."; exit 1
+    fi
+    if ! [[ "$PORT" =~ ^[0-9]+$ ]]; then echo "Port must be a number."; exit 1; fi
+    [[ "$USE_TLS" == "true" ]] && TLS_BOOL=true || TLS_BOOL=false
+    jq -n --arg h "$HOST" --argjson p "$PORT" --arg u "$USERNAME" --arg pw "$PASSWORD" \
+          --arg f "$FROM" --argjson t "$TLS_BOOL" \
+      '{host:$h, port:$p, username:$u, password:$pw, from:$f, use_tls:$t}' > "$SMTP_CONFIG_FILE"
+    chmod 600 "$SMTP_CONFIG_FILE"
+    echo "SMTP settings saved."
     ;;
 
   *)

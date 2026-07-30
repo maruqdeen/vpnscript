@@ -124,7 +124,7 @@ echo "    done."
 
 echo ">>> [9/9] Removing config, state, logs, cron jobs, and systemd units..."
 rm -f /etc/cron.d/vpn-auto-reboot /etc/cron.d/vpn-autokill /etc/cron.d/vpn-bandwidth-snapshot \
-      /etc/cron.d/vpn-clean-expired /etc/cron.d/vpn-ssh-limits
+      /etc/cron.d/vpn-clean-expired /etc/cron.d/vpn-ssh-limits /etc/cron.d/vpn-autobackup
 
 rm -f /etc/systemd/system/vpn-haproxy.service /etc/systemd/system/vpn-sslh.service \
       /etc/systemd/system/vpn-badvpn.service /etc/systemd/system/vpn-stunnel.service \

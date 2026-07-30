@@ -101,6 +101,11 @@ ACCESS_LABELS = {
     "wireguard": "Wireguard",
 }
 
+BACKUP_SCRIPT = os.path.join(INSTALL_DIR, "core", "backup.sh")
+BACKUP_EMAIL_SCRIPT = os.path.join(INSTALL_DIR, "core", "backup-email.py")
+BACKUP_DIR = os.path.join(INSTALL_DIR, "backups")
+BACKUP_NOTIFY_EMAIL_FILE = os.path.join(INSTALL_DIR, "backup-email-to")
+
 
 def _flag_enabled(flag_name):
     return os.path.exists(os.path.join(INSTALL_DIR, flag_name))
@@ -203,7 +208,7 @@ def get_dashboard_stats():
         return None
 
 
-def run_json(cmd, extra_env=None):
+def run_json(cmd, extra_env=None, timeout=30):
     """Run a backend script expected to print one JSON object; always
     returns a dict with at least an "ok" key, even on failure -- callers
     never need to handle a raised exception or malformed output."""
@@ -211,7 +216,7 @@ def run_json(cmd, extra_env=None):
     if extra_env:
         env.update(extra_env)
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30, env=env)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=env)
         try:
             return json.loads(result.stdout)
         except json.JSONDecodeError:
@@ -221,14 +226,16 @@ def run_json(cmd, extra_env=None):
         return {"ok": False, "error": "exec_failed", "message": str(exc)}
 
 
-def run_text(cmd, input_text=None):
+def run_text(cmd, input_text=None, timeout=30):
     """Run a backend script expected to print a human-readable card/message
     (the existing Telegram-bot-facing text mode) -- used for one-shot
     create/delete/renew actions, displayed verbatim in a <pre> block.
     input_text, if given, is piped to the script's stdin (e.g. the banner
-    editor, which reads its new text that way rather than as an argv)."""
+    editor, which reads its new text that way rather than as an argv).
+    timeout defaults to 30s; backup restore overrides it -- replaying
+    account creation for every entry in a manifest can run well past that."""
     try:
-        result = subprocess.run(cmd, input=input_text, capture_output=True, text=True, timeout=30)
+        result = subprocess.run(cmd, input=input_text, capture_output=True, text=True, timeout=timeout)
         return (result.stdout.strip() or result.stderr.strip() or "(no output)")
     except Exception as exc:
         return f"Error: {exc}"
@@ -538,6 +545,11 @@ tr:hover td { background: var(--surface-2); }
   font-size: var(--text-base); font-family: inherit;
 }
 .stack-form textarea { resize: vertical; min-height: 100px; }
+.stack-form label.checkbox-label {
+  display: flex; align-items: center; gap: 8px; text-transform: none;
+  font-size: var(--text-sm); color: var(--text); cursor: pointer;
+}
+.checkbox-label input[type="checkbox"] { width: auto; margin: 0; }
 
 input:disabled, textarea:disabled, select:disabled {
   background: var(--surface-2); color: var(--text-muted); cursor: not-allowed;
@@ -561,6 +573,7 @@ button.danger:hover { background: var(--danger-hover); }
   border-radius: var(--radius-sm); border: 1px solid var(--border-strong);
   background: var(--surface); color: var(--text); font-size: var(--text-sm); font-family: inherit;
 }
+.inline-form input.email-input { width: 170px; }
 
 .output {
   background: var(--surface-2); border: 1px solid var(--border); padding: 16px; border-radius: var(--radius-sm);
@@ -1048,6 +1061,13 @@ def render_wireguard_active_page():
 
 
 def render_settings_page():
+    smtp = run_json(["bash", SETTINGS_ACTIONS_SCRIPT, "smtp-get"])
+    smtp_status_html = (
+        f'<span class="ok">Configured</span> ({html.escape(smtp.get("host", ""))}:{html.escape(str(smtp.get("port", "")))}, from {html.escape(smtp.get("from", ""))})'
+        if smtp.get("configured")
+        else '<span class="bad">Not configured</span>'
+    )
+
     domains = run_json(["bash", SETTINGS_ACTIONS_SCRIPT, "get-domains"])
     domain = domains.get("domain") or "(not set)"
     ns_domain = domains.get("ns_domain") or "(not set)"
@@ -1168,6 +1188,20 @@ def render_settings_page():
 <div class="card">
 <h3>Clear RAM Cache</h3>
 <form method="post" action="/admin-panel/settings/clear-ram-cache"><button type="submit">Clear RAM Cache</button></form>
+</div>
+
+<div class="card">
+<h3>Email (SMTP) Settings</h3>
+<p class="muted">Used to email backup archives from the Backup page. Status: {smtp_status_html}</p>
+<form method="post" action="/admin-panel/settings/smtp" class="stack-form">
+<label>SMTP Host</label><input type="text" name="host" placeholder="smtp.gmail.com" value="{html.escape(smtp.get('host', ''))}">
+<label>SMTP Port</label><input type="number" name="port" value="{html.escape(str(smtp.get('port', 587)))}">
+<label>Username</label><input type="text" name="username" placeholder="you@gmail.com" value="{html.escape(smtp.get('username', ''))}">
+<label>Password / App Password</label><input type="password" name="password" placeholder="{'(unchanged)' if smtp.get('configured') else ''}">
+<label>From Address</label><input type="text" name="from" placeholder="you@gmail.com" value="{html.escape(smtp.get('from', ''))}">
+<label class="checkbox-label"><input type="checkbox" name="use_tls" value="true" {'checked' if smtp.get('use_tls', True) else ''}>Use STARTTLS/SSL</label>
+<button type="submit">Save SMTP Settings</button>
+</form>
 </div>"""
 
 
@@ -1296,6 +1330,134 @@ def render_bot_api_page():
 </div>"""
 
 
+def _format_size(size_bytes):
+    try:
+        size_bytes = int(size_bytes)
+    except (TypeError, ValueError):
+        return "0 KB"
+    if size_bytes >= 1024 * 1024:
+        return f"{size_bytes / (1024 * 1024):.1f} MB"
+    return f"{size_bytes / 1024:.0f} KB"
+
+
+def render_backup_page():
+    rclone = run_json(["bash", BACKUP_SCRIPT, "rclone-status"])
+    if not rclone.get("installed"):
+        drive_status_html = '<span class="bad">rclone not installed</span>'
+        drive_help = '<p class="muted">Install it first: <code>apt install -y rclone</code></p>'
+    elif not rclone.get("configured"):
+        drive_status_html = '<span class="bad">Not connected</span>'
+        drive_help = (
+            '<p class="muted">Run <code>rclone config</code> over SSH once -- create a remote named exactly '
+            '<code>gdrive</code>, type &quot;Google Drive&quot;, and follow the OAuth prompts. After that, '
+            'uploads and restores from Drive both work with no further setup.</p>'
+        )
+    else:
+        drive_status_html = '<span class="ok">Connected</span>'
+        drive_help = ""
+
+    backups_result = run_json(["bash", BACKUP_SCRIPT, "list-local"])
+    backups = backups_result.get("backups", []) if backups_result.get("ok") else []
+    rows = ""
+    for b in backups:
+        fn = html.escape(str(b.get("filename", "")))
+        size = _format_size(b.get("size_bytes", 0))
+        try:
+            created = time.strftime("%Y-%m-%d %H:%M", time.localtime(int(b.get("mtime", 0))))
+        except (TypeError, ValueError, OSError):
+            created = "-"
+        upload_form = (
+            f'<form method="post" action="/admin-panel/backup/upload" class="inline-form">'
+            f'<input type="hidden" name="filename" value="{fn}"><button type="submit">Upload to Drive</button></form>'
+            if rclone.get("configured") else ""
+        )
+        rows += f"""<tr>
+<td>{fn}</td>
+<td>{html.escape(created)}</td>
+<td>{html.escape(size)}</td>
+<td>
+<form method="post" action="/admin-panel/backup/restore" class="inline-form" onsubmit="return confirm('Restore accounts/settings from {fn}? Existing accounts are skipped, not overwritten.')">
+<input type="hidden" name="filename" value="{fn}">
+<button type="submit">Restore</button>
+</form>
+{upload_form}
+<form method="post" action="/admin-panel/backup/email" class="inline-form">
+<input type="hidden" name="filename" value="{fn}">
+<input type="text" name="to" placeholder="email" class="email-input">
+<button type="submit">Email</button>
+</form>
+<form method="post" action="/admin-panel/backup/delete" class="inline-form" onsubmit="return confirm('Delete {fn}?')">
+<input type="hidden" name="filename" value="{fn}">
+<button type="submit" class="danger">Delete</button>
+</form>
+</td>
+</tr>"""
+    if not rows:
+        rows = '<tr><td colspan="4">No backups yet -- click Backup Now to create one.</td></tr>'
+
+    autobackup = run_json(["bash", BACKUP_SCRIPT, "autobackup-status"])
+    ab_enabled = autobackup.get("enabled", False)
+    ab_schedule = autobackup.get("schedule") or ""
+    ab_status_html = (
+        f'<span class="ok">Enabled</span> ({html.escape(ab_schedule)})'
+        if ab_enabled else '<span class="bad">Disabled</span>'
+    )
+    try:
+        with open(BACKUP_NOTIFY_EMAIL_FILE) as f:
+            notify_email = f.read().strip()
+    except OSError:
+        notify_email = ""
+
+    return f"""<div class="page-head">
+<h2>Backup</h2>
+<div class="page-head-meta">
+<form method="post" action="/admin-panel/backup/create"><button type="submit">Backup Now</button></form>
+</div></div>
+
+<div class="card">
+<h3>Google Drive</h3>
+<p>Status: {drive_status_html}</p>
+{drive_help}
+</div>
+
+<div class="card">
+<h3>Restore from a Google Drive Link</h3>
+<p class="muted">Paste the share link (or file ID) of a backup previously uploaded to this Drive account.</p>
+<form method="post" action="/admin-panel/backup/restore-drive" class="stack-form" onsubmit="return confirm('Restore accounts/settings from that Drive file? Existing accounts are skipped, not overwritten.')">
+<label>Google Drive link or file ID</label>
+<input type="text" name="link" placeholder="https://drive.google.com/file/d/..." required>
+<button type="submit">Restore</button>
+</form>
+</div>
+
+<div class="card">
+<h3>Local Backups</h3>
+<table>
+<tr><th>Filename</th><th>Created</th><th>Size</th><th>Actions</th></tr>
+{rows}
+</table>
+</div>
+
+<div class="card">
+<h3>Autobackup</h3>
+<p>Status: {ab_status_html}</p>
+<form method="post" action="/admin-panel/backup/autobackup/enable" class="inline-form">
+<input type="hidden" name="schedule" value="daily"><button type="submit">Enable Daily</button>
+</form>
+<form method="post" action="/admin-panel/backup/autobackup/enable" class="inline-form">
+<input type="hidden" name="schedule" value="weekly"><button type="submit">Enable Weekly</button>
+</form>
+<form method="post" action="/admin-panel/backup/autobackup/disable" class="inline-form">
+<button type="submit" class="danger">Disable</button>
+</form>
+<form method="post" action="/admin-panel/backup/notify-email" class="stack-form">
+<label>Notification email (each autobackup run emails the archive here, if SMTP is configured in Settings)</label>
+<input type="text" name="email" value="{html.escape(notify_email)}" placeholder="you@example.com">
+<button type="submit">Save</button>
+</form>
+</div>"""
+
+
 class Handler(http.server.BaseHTTPRequestHandler):
     server_version = "VPNStarterKitAdminPanel/1.0"
 
@@ -1381,6 +1543,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self._handle_security_page()
         if path == "/admin-panel/bot-api":
             return self._handle_bot_api_page()
+        if path == "/admin-panel/backup":
+            return self._handle_backup_page()
         if path.startswith("/admin-panel/"):
             return self._handle_placeholder(path)
         self._send_html("<h1>404 Not Found</h1>", status=404)
@@ -1430,6 +1594,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self._handle_settings_domains()
         if path == "/admin-panel/settings/banner":
             return self._handle_settings_banner()
+        if path == "/admin-panel/settings/smtp":
+            return self._handle_settings_smtp()
         if path == "/admin-panel/settings/autoreboot/enable":
             return self._handle_settings_autoreboot_enable()
         if path == "/admin-panel/settings/autoreboot/disable":
@@ -1461,6 +1627,24 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self._handle_bot_api_user_disconnect()
         if path == "/admin-panel/bot-api/user-bot/access/toggle":
             return self._handle_bot_api_access_toggle()
+        if path == "/admin-panel/backup/create":
+            return self._handle_backup_create()
+        if path == "/admin-panel/backup/upload":
+            return self._handle_backup_upload()
+        if path == "/admin-panel/backup/delete":
+            return self._handle_backup_delete()
+        if path == "/admin-panel/backup/restore":
+            return self._handle_backup_restore()
+        if path == "/admin-panel/backup/restore-drive":
+            return self._handle_backup_restore_drive()
+        if path == "/admin-panel/backup/email":
+            return self._handle_backup_email()
+        if path == "/admin-panel/backup/autobackup/enable":
+            return self._handle_backup_autobackup_enable()
+        if path == "/admin-panel/backup/autobackup/disable":
+            return self._handle_backup_autobackup_disable()
+        if path == "/admin-panel/backup/notify-email":
+            return self._handle_backup_notify_email()
         self._send_html("<h1>404 Not Found</h1>", status=404)
 
     def _handle_login_get(self):
@@ -1762,6 +1946,22 @@ class Handler(http.server.BaseHTTPRequestHandler):
         body = render_action_result("Change Banner", output, "/admin-panel/settings")
         self._send_html(render_shell_page("Settings", body, "/admin-panel/settings"))
 
+    def _handle_settings_smtp(self):
+        if not self._current_session():
+            return self._redirect("/admin-panel/login")
+        form = self._read_form_body()
+        host = self._form_value(form, "host")
+        port = self._form_value(form, "port", "587")
+        username = self._form_value(form, "username")
+        password = self._form_value(form, "password")
+        from_addr = self._form_value(form, "from")
+        use_tls = "true" if self._form_value(form, "use_tls") == "true" else "false"
+        output = run_text(
+            ["bash", SETTINGS_ACTIONS_SCRIPT, "smtp-set", host, port, username, password, from_addr, use_tls]
+        )
+        body = render_action_result("Email (SMTP) Settings", output, "/admin-panel/settings")
+        self._send_html(render_shell_page("Settings", body, "/admin-panel/settings"))
+
     def _handle_settings_autoreboot_enable(self):
         if not self._current_session():
             return self._redirect("/admin-panel/login")
@@ -1866,6 +2066,114 @@ class Handler(http.server.BaseHTTPRequestHandler):
         output = run_text(["bash", TELEGRAM_BOT_ACTIONS_SCRIPT, "user-access-toggle", key])
         body = render_action_result("Control Access", output, "/admin-panel/bot-api")
         self._send_html(render_shell_page("Bot & Api Setup", body, "/admin-panel/bot-api"))
+
+    # ---- Backup ----
+    def _handle_backup_page(self):
+        if not self._current_session():
+            return self._redirect("/admin-panel/login")
+        self._send_html(render_shell_page("Backup", render_backup_page(), "/admin-panel/backup"))
+
+    def _handle_backup_create(self):
+        if not self._current_session():
+            return self._redirect("/admin-panel/login")
+        result = run_json(["bash", BACKUP_SCRIPT, "create"], timeout=120)
+        if result.get("ok"):
+            size = _format_size(result.get("size_bytes", 0))
+            output = f"Backup created: {result.get('filename')} ({size})"
+        else:
+            output = result.get("message", "Backup failed -- check journalctl -u vpn-admin-panel.")
+        body = render_action_result("Backup Now", output, "/admin-panel/backup")
+        self._send_html(render_shell_page("Backup", body, "/admin-panel/backup"))
+
+    def _handle_backup_upload(self):
+        if not self._current_session():
+            return self._redirect("/admin-panel/login")
+        form = self._read_form_body()
+        filename = self._form_value(form, "filename")
+        result = run_json(["bash", BACKUP_SCRIPT, "upload", filename])
+        if result.get("ok"):
+            output = f"Uploaded to Google Drive.\n\nShare link (copy this):\n{result.get('link')}"
+        else:
+            output = result.get("message", "Upload failed -- see Google Drive setup instructions on the Backup page.")
+        body = render_action_result("Upload to Google Drive", output, "/admin-panel/backup")
+        self._send_html(render_shell_page("Backup", body, "/admin-panel/backup"))
+
+    def _handle_backup_delete(self):
+        if not self._current_session():
+            return self._redirect("/admin-panel/login")
+        form = self._read_form_body()
+        filename = self._form_value(form, "filename")
+        run_text(["bash", BACKUP_SCRIPT, "delete-local", filename])
+        self._redirect("/admin-panel/backup")
+
+    def _handle_backup_restore(self):
+        if not self._current_session():
+            return self._redirect("/admin-panel/login")
+        form = self._read_form_body()
+        filename = self._form_value(form, "filename")
+        output = run_text(["bash", BACKUP_SCRIPT, "restore", filename], timeout=300)
+        body = render_action_result("Restore", output, "/admin-panel/backup")
+        self._send_html(render_shell_page("Backup", body, "/admin-panel/backup"))
+
+    def _handle_backup_restore_drive(self):
+        if not self._current_session():
+            return self._redirect("/admin-panel/login")
+        form = self._read_form_body()
+        link = self._form_value(form, "link")
+        output = run_text(["bash", BACKUP_SCRIPT, "restore-drive-id", link], timeout=300)
+        body = render_action_result("Restore from Google Drive", output, "/admin-panel/backup")
+        self._send_html(render_shell_page("Backup", body, "/admin-panel/backup"))
+
+    def _handle_backup_email(self):
+        if not self._current_session():
+            return self._redirect("/admin-panel/login")
+        form = self._read_form_body()
+        filename = self._form_value(form, "filename")
+        to_address = self._form_value(form, "to")
+        if not to_address:
+            output = "Enter an email address first."
+        else:
+            file_path = os.path.join(BACKUP_DIR, filename)
+            result = run_json(["python3", BACKUP_EMAIL_SCRIPT, to_address, file_path])
+            output = result.get("message", "Something went wrong sending the email.")
+        body = render_action_result("Email Backup", output, "/admin-panel/backup")
+        self._send_html(render_shell_page("Backup", body, "/admin-panel/backup"))
+
+    def _handle_backup_autobackup_enable(self):
+        if not self._current_session():
+            return self._redirect("/admin-panel/login")
+        form = self._read_form_body()
+        schedule = self._form_value(form, "schedule", "daily")
+        output = run_text(["bash", BACKUP_SCRIPT, "autobackup-enable", schedule])
+        body = render_action_result("Autobackup", output, "/admin-panel/backup")
+        self._send_html(render_shell_page("Backup", body, "/admin-panel/backup"))
+
+    def _handle_backup_autobackup_disable(self):
+        if not self._current_session():
+            return self._redirect("/admin-panel/login")
+        output = run_text(["bash", BACKUP_SCRIPT, "autobackup-disable"])
+        body = render_action_result("Autobackup", output, "/admin-panel/backup")
+        self._send_html(render_shell_page("Backup", body, "/admin-panel/backup"))
+
+    def _handle_backup_notify_email(self):
+        if not self._current_session():
+            return self._redirect("/admin-panel/login")
+        form = self._read_form_body()
+        email = self._form_value(form, "email").strip()
+        try:
+            if email:
+                with open(BACKUP_NOTIFY_EMAIL_FILE, "w") as f:
+                    f.write(email + "\n")
+                os.chmod(BACKUP_NOTIFY_EMAIL_FILE, 0o600)
+                output = f"Notification email set to {email}."
+            else:
+                if os.path.exists(BACKUP_NOTIFY_EMAIL_FILE):
+                    os.remove(BACKUP_NOTIFY_EMAIL_FILE)
+                output = "Notification email cleared."
+        except OSError as exc:
+            output = f"Could not save: {exc}"
+        body = render_action_result("Autobackup Notification Email", output, "/admin-panel/backup")
+        self._send_html(render_shell_page("Backup", body, "/admin-panel/backup"))
 
 
 def main():

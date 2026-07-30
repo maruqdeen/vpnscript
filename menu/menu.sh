@@ -151,7 +151,7 @@ while true; do
     8)  bash "$BASE/menu-bot-api.sh" ;;
     9)  bash "$BASE/menu-security.sh" ;;
     10) bash "$BASE/menu-webgui.sh" ;;
-    11) echo "Backup — not built yet." ; pause ;;
+    11) bash "$BASE/menu-backup.sh" ;;
     12) bash "$INSTALL_DIR/install/uninstall.sh"
         # A completed uninstall just deleted $INSTALL_DIR out from under
         # this very process -- a running script keeps executing whatever's
