@@ -270,7 +270,11 @@ MSG
        | select(.email==$old) | .email) = $new
     ' "$CONFIG" > "$tmp" && chmod 644 "$tmp" && mv "$tmp" "$CONFIG"
 
-    systemctl restart xray
+    # No restart here, unlike create/delete: .email is a display/expiry-
+    # tracking label only (parsed back out as "username_expirydate" by
+    # list/renew/delete), never used for auth or routing -- the live
+    # process doesn't need to know it changed, so restarting here would
+    # only drop every connected Xray client for nothing.
     echo "Renewed $PROTOCOL user '${USERNAME}' -> expires ${NEW_EXP}."
     ;;
 

@@ -56,7 +56,9 @@ renew_xray() {
      | select(.email==$old) | .email) = $new
   ' "$CONFIG" > "$tmp" && chmod 644 "$tmp" && mv "$tmp" "$CONFIG"
 
-  systemctl restart xray
+  # No restart here, unlike add/delete: .email is a display/expiry-
+  # tracking label only, never used for auth or routing -- the live
+  # process doesn't need to know it changed.
   echo "Renewed $proto user '$NAME' -> expires $new_exp."
 }
 

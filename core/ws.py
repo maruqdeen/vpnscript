@@ -29,6 +29,20 @@ def _read_target_port():
 TARGET_PORT = _read_target_port()
 BUFFER = 4096
 
+# Backend (Dropbear/OpenSSH) dial timeout -- without this, a slow/stuck
+# backend hangs the handler thread for that one connection indefinitely.
+CONNECT_TIMEOUT = 5
+
+# Concurrency cap: every connection spawns 3 native OS threads (this
+# accept-thread's handle() call, plus 2 more inside pipe()) with no pool
+# and no other limit besides the listen() backlog below -- under a
+# reconnect storm that's unbounded thread creation. A BoundedSemaphore
+# caps how many connections are actively being bridged at once; anything
+# past that is closed immediately (cheap: it never reaches the backend
+# dial or spawns the 2 pipe threads) instead of piling up.
+MAX_CONNECTIONS = 1000
+_conn_semaphore = threading.BoundedSemaphore(MAX_CONNECTIONS)
+
 # The banner sent back to the client to complete the "upgrade".
 RESPONSE = (
     "HTTP/1.1 101 Switching Protocols\r\n"
@@ -59,6 +73,14 @@ def pipe(src, dst):
 
 
 def handle(client):
+    if not _conn_semaphore.acquire(blocking=False):
+        # At capacity -- close immediately rather than dial the backend
+        # and spawn 2 more threads on top of an already-saturated pool.
+        try:
+            client.close()
+        except OSError:
+            pass
+        return
     try:
         # Read (and discard) the client's HTTP request payload.
         client.settimeout(5)
@@ -73,7 +95,11 @@ def handle(client):
 
         # Open the tunnel to local SSH.
         target = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        target.connect((TARGET_HOST, TARGET_PORT))
+        target.settimeout(CONNECT_TIMEOUT)
+        try:
+            target.connect((TARGET_HOST, TARGET_PORT))
+        finally:
+            target.settimeout(None)  # back to blocking for the actual tunnel I/O
 
         # Bridge both directions.
         t1 = threading.Thread(target=pipe, args=(client, target), daemon=True)
@@ -86,6 +112,7 @@ def handle(client):
         sys.stderr.write(f"handle error: {e}\n")
     finally:
         client.close()
+        _conn_semaphore.release()
 
 
 def main():

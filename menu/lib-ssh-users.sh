@@ -114,6 +114,25 @@ ssh_user_login_count() {
   fi
 }
 
+# Same result as ssh_user_login_count(), but takes a pre-computed engine
+# + Dropbear PID/user map instead of recomputing both per call. Every
+# call to ssh_user_login_count() re-runs _dropbear_pid_user_map()'s
+# journalctl scan from scratch -- fine for a one-off lookup, expensive
+# when a caller loops over every account (autokill-check.sh,
+# ssh-limits-check.sh both used to do exactly that, every 2 minutes).
+# Those callers should compute `engine` and `dropbear_map` ONCE before
+# their loop and pass them in here per account instead.
+ssh_user_login_count_cached() {
+  local user="$1" engine="$2" dropbear_map="$3"
+  if [[ "$engine" == "openssh" ]]; then
+    local n
+    n="$(pgrep -c -u "$user" sshd 2>/dev/null)"
+    echo "${n:-0}"
+  else
+    awk -v u="$user" '$2==u' <<< "$dropbear_map" | wc -l | tr -d ' '
+  fi
+}
+
 # "conn:N" / "bw:NMB" (space-joined) or "-" if this user has no limits
 # configured (or both are unlimited). Reads core/ssh-limits.sh's store
 # directly rather than sourcing that file — this is read-only display,
