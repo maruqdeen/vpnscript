@@ -2,14 +2,23 @@
 # VPN-Starter-Kit :: menu/check-xray-user.sh
 # Shows every Xray user for a given protocol (vmess/vless/trojan/
 # shadowsocks) with a session count. Xray has no per-connection OS
-# process to count (unlike SSH's Dropbear PIDs), and its WS/gRPC
-# inbounds sit behind nginx on loopback, so the source IP in Xray's own
-# access log is always 127.0.0.1 (nginx) — counting distinct client
-# IPs, the SSH approach, doesn't work here. Instead this counts
-# "accepted" access-log lines carrying that user's email tag within
-# the last 60s (matches nginx's WS idle timeout): each open WS/gRPC
-# stream logs its own accepted line, so this approximates concurrent
-# sessions. Best-effort, not a verified distinct-device count.
+# process to count (unlike SSH's Dropbear PIDs), and for inbounds that
+# sit behind nginx on loopback the source IP in Xray's own access log
+# is 127.0.0.1 (nginx), not the real client — counting distinct client
+# IPs, the SSH approach, doesn't work uniformly here.
+#
+# Each line in the access log is one accepted OUTBOUND connection the
+# proxied traffic makes, not one per device — a single phone actively
+# using an app can log a dozen+ lines in a few seconds (one per image
+# load, API call, etc. — confirmed against a real log sample), so a raw
+# line count wildly overcounts. Instead this counts DISTINCT "from
+# IP:PORT" values per user within the last 60s: every accepted
+# connection sharing the same source (same loopback ephemeral port, or
+# the same real IP for inbounds that see one) collapses to one entry.
+# Still an approximation of concurrent connections, not a verified
+# distinct-device count — same caveat menu/lib-ssh-users.sh documents
+# for the SSH side (one client can legitimately hold open more than one
+# connection at a time) — but far closer than the raw line count was.
 # Usage: check-xray-user.sh <vmess|vless|trojan|shadowsocks>
 set -uo pipefail
 
@@ -71,12 +80,21 @@ CUTOFF_STR="$(date -d "@$(( $(date +%s) - WINDOW_SECONDS ))" +"%Y/%m/%d %H:%M:%S
 
 for email in "${USERS[@]}"; do
   uname="${email%%_*}"
+  # $4 is the "IP:PORT" Xray logged as the connection's source (e.g.
+  # "127.0.0.1:59188" for nginx-proxied inbounds, or a real client IP
+  # for inbounds that see one) -- deduping on it collapses every
+  # accepted-connection line from the SAME underlying connection down
+  # to one entry, instead of counting each one.
   count=$(awk -v needle="email: ${email}" -v cutoff="$CUTOFF_STR" '
     index($0, needle) {
       ts = $1" "$2
-      if (ts >= cutoff) n++
+      if (ts >= cutoff) seen[$4] = 1
     }
-    END { print n+0 }
+    END {
+      n = 0
+      for (k in seen) n++
+      print n
+    }
   ' "$ACCESS_LOG")
   printf "%-28s %s\n" "$uname" "$count"
 done
