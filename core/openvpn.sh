@@ -154,6 +154,7 @@ write_client_ovpn "$DL_DIR/client-tcp.ovpn" "$SERVER_HOST 1194 tcp"
 write_client_ovpn "$DL_DIR/client-udp.ovpn" "$SERVER_HOST 1194 udp" "$SERVER_HOST 443 udp"
 
 # ---- 5. Download portal (nginx, ports 85 + 81 — additive, own conf file) ----
+mkdir -p /etc/nginx/conf.d
 cat > /etc/nginx/conf.d/vpn-ovpn-dl.conf <<EOF
 server {
     listen 85;

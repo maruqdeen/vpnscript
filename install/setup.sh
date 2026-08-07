@@ -119,6 +119,14 @@ read -rp "Enter your TLS/WS domain (e.g. vpn.grab2.eu.cc), blank for self-signed
 echo "${WS_DOMAIN:-}" > "$INSTALL_DIR/domain"
 bash "$REPO/core/tls.sh" "${WS_DOMAIN:-}"
 
+# On a reinstall (uninstall.sh purges nginx + rm -rf's /etc/nginx), apt
+# can end up believing nginx is already at its target version and skip
+# re-laying-down its package files entirely -- if that purge didn't fully
+# clear dpkg's install-state (silently swallowed by uninstall.sh's own
+# `|| true`), /etc/nginx/conf.d never gets recreated and this install
+# command dies with "No such file or directory", which (set -e) kills
+# the whole setup script right here. Defensive either way.
+mkdir -p /etc/nginx/conf.d
 install -m 644 "$REPO/core/nginx.conf" /etc/nginx/conf.d/vpn.conf
 rm -f /etc/nginx/sites-enabled/default 2>/dev/null || true
 nginx -t
