@@ -240,7 +240,7 @@ if ! systemctl is-active --quiet ohp-proxy; then
 fi
 
 # ============================================================
-echo ">>> [9/10] Optional services (HAProxy, SSLH, OpenVPN, Proxy)"
+echo ">>> [9/10] Optional services (HAProxy, SSLH, BadVPN, OpenVPN, Proxy)"
 # ============================================================
 # These ship enabled by default. Each is self-contained and non-fatal to
 # the base install if one fails — the core VPN service is already up by
@@ -251,6 +251,8 @@ bash "$INSTALL_DIR/core/haproxy.sh" enable \
   || echo "WARNING: HAProxy did not enable cleanly — retry via: menu > Settings > Toggle HAProxy"
 bash "$INSTALL_DIR/core/sslh.sh" enable \
   || echo "WARNING: SSLH did not enable cleanly — retry via: menu > Settings > Toggle SSLH Multiplex"
+bash "$INSTALL_DIR/core/badvpn.sh" enable \
+  || echo "WARNING: BadVPN did not enable cleanly — retry via: menu > Settings > Toggle BadVPN"
 echo ">>> Enabling OpenVPN (first run builds a PKI + DH params, can take a few minutes)..."
 bash "$INSTALL_DIR/core/openvpn.sh" enable \
   || echo "WARNING: OpenVPN did not enable cleanly — retry via: menu > Settings > Toggle OpenVPN"
