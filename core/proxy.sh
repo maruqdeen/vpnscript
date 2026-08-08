@@ -30,6 +30,20 @@ export NEEDRESTART_MODE=a
 command -v squid  >/dev/null 2>&1 || apt-get install -y squid >/dev/null
 command -v danted >/dev/null 2>&1 || apt-get install -y dante-server >/dev/null
 
+# Same class of bug fixed for nginx: a binary being on PATH doesn't mean
+# its conffiles are on disk. On a reinstall after uninstall.sh's
+# `apt-get purge ... squid ... || true` + `rm -rf /etc/squid`, apt/dpkg
+# can leave the squid package looking "already installed" (command -v
+# squid succeeds, so the install above gets skipped) while /etc/squid
+# itself is gone -- and a plain reinstall wouldn't restore a MISSING
+# conffile anyway (dpkg treats that as deliberate removal). Check the
+# actual directory, not the binary, and purge+reinstall for real if
+# it's missing so the cat > .../squid.conf below has somewhere to land.
+if [[ ! -d /etc/squid ]]; then
+  apt-get purge -y squid squid-common >/dev/null 2>&1 || true
+  apt-get install -y squid >/dev/null
+fi
+
 IFACE="$(ip route show default | awk '{print $5; exit}')"
 [[ -z "$IFACE" ]] && IFACE="eth0"
 
