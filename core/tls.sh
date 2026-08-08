@@ -65,12 +65,42 @@ if certbot certonly --standalone --non-interactive --agree-tos \
      -m "admin@${DOMAIN}" -d "$DOMAIN" 2>/tmp/certbot.err; then
   ln -sf "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" "$CERT_DIR/fullchain.pem"
   ln -sf "/etc/letsencrypt/live/${DOMAIN}/privkey.pem"   "$CERT_DIR/privkey.pem"
-  echo "    Let's Encrypt cert installed for $DOMAIN."
-  # reload nginx after future auto-renewals
-  mkdir -p /etc/letsencrypt/renewal-hooks/deploy
-  echo -e '#!/bin/bash\nsystemctl reload nginx' \
-    > /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh
-  chmod +x /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh
+
+  # certbot exiting 0 only means "a cert satisfying this request already
+  # exists" -- including its "not yet due for renewal, no action taken"
+  # no-op path, which trusts whatever is ALREADY on disk without ever
+  # inspecting it. Confirmed live: a stale/corrupted cert from an
+  # interrupted earlier run (e.g. mid uninstall/reinstall) can sit there
+  # missing its Subject Alternative Name, and certbot will happily keep
+  # reporting success and reusing it forever -- silently breaking every
+  # modern TLS client while looking completely fine from this script's
+  # side. Verify the actual served file, not just certbot's exit code.
+  if openssl x509 -in "$CERT_DIR/fullchain.pem" -noout -text 2>/dev/null | grep -q "Subject Alternative Name"; then
+    echo "    Let's Encrypt cert installed for $DOMAIN."
+    # reload nginx after future auto-renewals
+    mkdir -p /etc/letsencrypt/renewal-hooks/deploy
+    echo -e '#!/bin/bash\nsystemctl reload nginx' \
+      > /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh
+    chmod +x /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh
+  else
+    echo "    WARNING: the cert on disk for $DOMAIN has no Subject"
+    echo "    Alternative Name (stale/corrupted from an earlier run) --"
+    echo "    forcing a fresh issuance instead of trusting it."
+    if certbot certonly --standalone --non-interactive --agree-tos \
+         --preferred-challenges http --force-renewal \
+         -m "admin@${DOMAIN}" -d "$DOMAIN" 2>/tmp/certbot.err; then
+      ln -sf "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" "$CERT_DIR/fullchain.pem"
+      ln -sf "/etc/letsencrypt/live/${DOMAIN}/privkey.pem"   "$CERT_DIR/privkey.pem"
+      echo "    Let's Encrypt cert re-issued for $DOMAIN."
+      mkdir -p /etc/letsencrypt/renewal-hooks/deploy
+      echo -e '#!/bin/bash\nsystemctl reload nginx' \
+        > /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh
+      chmod +x /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh
+    else
+      echo "    Forced re-issuance also failed. Details: $(tail -1 /tmp/certbot.err 2>/dev/null)"
+      make_selfsigned
+    fi
+  fi
 else
   echo "    Let's Encrypt failed — likely the domain isn't pointing straight"
   echo "    at this server (check A record / Cloudflare grey-cloud)."
