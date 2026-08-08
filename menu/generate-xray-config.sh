@@ -64,6 +64,28 @@ CLIENT_JSON="$(jq -c --arg p "$PROTOCOL" --arg email "$MATCH" '
 HOSTNAME_VAL="$(cat "$DOMAIN_FILE" 2>/dev/null)"
 [[ -z "$HOSTNAME_VAL" ]] && HOSTNAME_VAL="$(curl -s https://api.ipify.org || hostname -I | awk '{print $1}')"
 
+# No domain set -> HOSTNAME_VAL just fell back to the bare IP above, but
+# the TLS/GRPC links still get generated with strict TLS (no client ever
+# sets allowInsecure here) against whatever cert tls.sh actually issued --
+# a self-signed cert whose CN won't match a bare IP, so those links are
+# guaranteed to fail the handshake. Warn clearly instead of leaving that
+# as a silent "why won't this connect" mystery.
+NO_DOMAIN_WARNING=""
+TROJAN_NO_DOMAIN_WARNING=""
+if [[ -z "$(cat "$DOMAIN_FILE" 2>/dev/null)" ]]; then
+  NO_DOMAIN_WARNING="
+NOTE: No domain is set (Settings > Change Primary Domain) -- this
+      server is using a self-signed cert over its bare IP. The TLS
+      and GRPC links above will FAIL to connect (cert won't
+      validate). Use the 'none TLS' link instead, or set a real
+      domain and regenerate this account's config."
+  TROJAN_NO_DOMAIN_WARNING="
+NOTE: No domain is set (Settings > Change Primary Domain) -- Trojan
+      requires a real domain + valid TLS cert to work at all (there
+      is no plaintext fallback for this protocol). Set a domain,
+      then regenerate this account's config."
+fi
+
 case "$PROTOCOL" in
 vmess)
   ID="$(echo "$CLIENT_JSON" | jq -r '.id')"
@@ -94,7 +116,7 @@ Link none TLS : ${LINK_PLAIN}
 Link GRPC     : ${LINK_GRPC}
 ====================================
 Expired On    : ${EXPIRY}
-====================================
+====================================${NO_DOMAIN_WARNING}
 CARD
   ;;
 vless)
@@ -125,7 +147,7 @@ Link none TLS : ${LINK_PLAIN}
 Link GRPC     : ${LINK_GRPC}
 ====================================
 Expired On    : ${EXPIRY}
-====================================
+====================================${NO_DOMAIN_WARNING}
 CARD
   ;;
 trojan)
@@ -151,7 +173,7 @@ Link TLS      : ${LINK_TLS}
 Link GRPC     : ${LINK_GRPC}
 ====================================
 Expired On    : ${EXPIRY}
-====================================
+====================================${TROJAN_NO_DOMAIN_WARNING}
 CARD
   ;;
 shadowsocks)
