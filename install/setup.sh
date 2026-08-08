@@ -125,10 +125,20 @@ bash "$REPO/core/tls.sh" "${WS_DOMAIN:-}"
 # package's own main /etc/nginx/nginx.conf too, which nothing else here
 # writes. `apt install nginx` reporting "already the newest version"
 # doesn't mean the files are actually on disk; check the file itself,
-# not apt's belief about it, and force a real reinstall if it's gone.
+# not apt's belief about it, and force it back if it's gone.
+#
+# `apt-get install --reinstall` alone is NOT enough here -- confirmed on
+# a real reinstall: it re-unpacks and re-configures the package but
+# still leaves nginx.conf missing. dpkg treats nginx.conf as a conffile,
+# and a MISSING conffile (not just a modified one) is deliberately not
+# force-restored by a plain reinstall -- dpkg reads that as "the admin
+# removed it on purpose." Purging first erases dpkg's conffile record
+# entirely, so the following install has no prior state to reconcile
+# against and lays every file down fresh, guaranteed.
 if [[ ! -f /etc/nginx/nginx.conf ]]; then
-  echo ">>> /etc/nginx/nginx.conf missing (stale apt state after a previous uninstall) -- forcing nginx reinstall..."
-  apt-get install --reinstall -y nginx nginx-common
+  echo ">>> /etc/nginx/nginx.conf missing (stale apt/dpkg state after a previous uninstall) -- purging + reinstalling nginx..."
+  apt-get purge -y nginx nginx-common
+  apt-get install -y nginx nginx-common
 fi
 
 mkdir -p /etc/nginx/conf.d

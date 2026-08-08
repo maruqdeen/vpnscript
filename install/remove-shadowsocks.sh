@@ -20,7 +20,16 @@ wget -qO "$TMP_NGINX" \
   https://raw.githubusercontent.com/maruqdeen/vpnscript/main/core/nginx.conf \
   || { echo "Download failed."; exit 1; }
 if [[ ! -f /etc/nginx/nginx.conf ]]; then
-  apt-get install --reinstall -y nginx nginx-common
+  # A plain --reinstall does not restore a MISSING conffile (dpkg reads
+  # that as deliberate removal) -- purge first to clear dpkg's conffile
+  # record, then install fresh so every file is laid down guaranteed.
+  # DEBIAN_FRONTEND/NEEDRESTART_MODE: this is the first apt call in this
+  # script -- without them, needrestart's TUI can block forever on a
+  # non-interactive run.
+  export DEBIAN_FRONTEND=noninteractive
+  export NEEDRESTART_MODE=a
+  apt-get purge -y nginx nginx-common
+  apt-get install -y nginx nginx-common
 fi
 mkdir -p /etc/nginx/conf.d
 install -m 644 "$TMP_NGINX" /etc/nginx/conf.d/vpn.conf

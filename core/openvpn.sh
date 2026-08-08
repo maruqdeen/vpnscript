@@ -155,7 +155,11 @@ write_client_ovpn "$DL_DIR/client-udp.ovpn" "$SERVER_HOST 1194 udp" "$SERVER_HOS
 
 # ---- 5. Download portal (nginx, ports 85 + 81 — additive, own conf file) ----
 if [[ ! -f /etc/nginx/nginx.conf ]]; then
-  apt-get install --reinstall -y nginx nginx-common
+  # A plain --reinstall does not restore a MISSING conffile (dpkg reads
+  # that as deliberate removal) -- purge first to clear dpkg's conffile
+  # record, then install fresh so every file is laid down guaranteed.
+  apt-get purge -y nginx nginx-common
+  apt-get install -y nginx nginx-common
 fi
 mkdir -p /etc/nginx/conf.d
 cat > /etc/nginx/conf.d/vpn-ovpn-dl.conf <<EOF
