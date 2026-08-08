@@ -16,10 +16,33 @@ mkdir -p "$CERT_DIR"
 
 make_selfsigned() {
   echo ">>> Generating self-signed certificate..."
+  local cn="${DOMAIN:-vpn.local}"
+  local san
+  if [[ -n "$DOMAIN" ]]; then
+    san="subjectAltName=DNS:${DOMAIN}"
+  else
+    # No domain at all -- HOSTNAME_VAL in the config generators falls back
+    # to the server's public IP in this case, so cover that too, not just
+    # the DNS:vpn.local placeholder.
+    local ip
+    ip="$(curl -s --max-time 5 https://api.ipify.org 2>/dev/null)"
+    if [[ -n "$ip" ]]; then
+      san="subjectAltName=DNS:vpn.local,IP:${ip}"
+    else
+      san="subjectAltName=DNS:vpn.local"
+    fi
+  fi
+  # -subj alone (CN only, no SAN) produces a cert modern TLS clients
+  # reject outright: SAN-based hostname matching has been required since
+  # ~2017 (Go's crypto/x509 included -- what Xray-core/v2rayNG use), CN
+  # is no longer honored as a fallback. A CN-only cert here fails with
+  # "certificate is not valid for any names" even though CN matches --
+  # confirmed live, this is exactly what broke VMess/VLESS/Trojan TLS
+  # while older/more lenient clients (HTTP Injector etc.) kept working.
   openssl req -x509 -nodes -newkey rsa:2048 -days 3650 \
     -keyout "$CERT_DIR/privkey.pem" \
     -out    "$CERT_DIR/fullchain.pem" \
-    -subj "/CN=${DOMAIN:-vpn.local}" >/dev/null 2>&1
+    -subj "/CN=${cn}" -addext "$san" >/dev/null 2>&1
   echo "    self-signed cert ready (fine for SSH-WS SSL/TLS mode)."
 }
 
