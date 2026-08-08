@@ -121,11 +121,16 @@ bash "$REPO/core/tls.sh" "${WS_DOMAIN:-}"
 
 # On a reinstall (uninstall.sh purges nginx + rm -rf's /etc/nginx), apt
 # can end up believing nginx is already at its target version and skip
-# re-laying-down its package files entirely -- if that purge didn't fully
-# clear dpkg's install-state (silently swallowed by uninstall.sh's own
-# `|| true`), /etc/nginx/conf.d never gets recreated and this install
-# command dies with "No such file or directory", which (set -e) kills
-# the whole setup script right here. Defensive either way.
+# re-laying-down ANY of its package files -- not just conf.d, but the
+# package's own main /etc/nginx/nginx.conf too, which nothing else here
+# writes. `apt install nginx` reporting "already the newest version"
+# doesn't mean the files are actually on disk; check the file itself,
+# not apt's belief about it, and force a real reinstall if it's gone.
+if [[ ! -f /etc/nginx/nginx.conf ]]; then
+  echo ">>> /etc/nginx/nginx.conf missing (stale apt state after a previous uninstall) -- forcing nginx reinstall..."
+  apt-get install --reinstall -y nginx nginx-common
+fi
+
 mkdir -p /etc/nginx/conf.d
 install -m 644 "$REPO/core/nginx.conf" /etc/nginx/conf.d/vpn.conf
 rm -f /etc/nginx/sites-enabled/default 2>/dev/null || true

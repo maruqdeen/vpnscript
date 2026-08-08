@@ -19,6 +19,9 @@ TMP_NGINX="$(mktemp)"
 wget -qO "$TMP_NGINX" \
   https://raw.githubusercontent.com/maruqdeen/vpnscript/main/core/nginx.conf \
   || { echo "Download failed."; exit 1; }
+if [[ ! -f /etc/nginx/nginx.conf ]]; then
+  apt-get install --reinstall -y nginx nginx-common
+fi
 mkdir -p /etc/nginx/conf.d
 install -m 644 "$TMP_NGINX" /etc/nginx/conf.d/vpn.conf
 rm -f "$TMP_NGINX"
